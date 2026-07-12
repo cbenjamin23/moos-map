@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MOOS Map</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">MOOS-IvP utility</p>
+        <h1>MOOS Map</h1>
+      </div>
+      <p class="tagline">Select an area. Inspect the tile-aligned result. Build a compatible TIFF.</p>
+    </header>
+
+    <main class="workspace">
+      <section class="map-panel" aria-label="Map selection">
+        <div id="map"></div>
+        <div class="map-tools" role="toolbar" aria-label="Map drawing tools">
+          <button id="set-origin" type="button">Place mission origin</button>
+          <button id="draw-bounds" type="button">Draw requested area</button>
+          <button id="fit-result" type="button" class="secondary">Fit result</button>
+        </div>
+        <div id="map-hint" class="map-hint">Choose a tool, then click the map.</div>
+      </section>
+
+      <aside class="control-panel">
+        <form id="map-form">
+          <section class="form-section">
+            <div class="section-heading">
+              <span class="step">1</span>
+              <div>
+                <h2>Source & detail</h2>
+                <p>Preview and export permissions are shown before building.</p>
+              </div>
+            </div>
+            <label>
+              Map source
+              <select id="source" name="source"></select>
+            </label>
+            <div id="source-note" class="source-note"></div>
+            <div id="custom-source-fields" class="conditional-fields hidden">
+              <label>
+                XYZ URL template
+                <input id="url-template" placeholder="https://example/{z}/{x}/{y}.png" />
+              </label>
+              <label class="check-row">
+                <input id="accept-terms" type="checkbox" />
+                <span>I confirm this source permits static/offline export.</span>
+              </label>
+            </div>
+            <div id="mbtiles-fields" class="conditional-fields hidden">
+              <label>
+                Local MBTiles path
+                <input id="mbtiles-path" placeholder="/absolute/path/chart.mbtiles" />
+              </label>
+            </div>
+            <label>
+              Zoom
+              <div class="range-row">
+                <input id="zoom" type="range" min="0" max="16" value="16" />
+                <output id="zoom-value" for="zoom">16</output>
+              </div>
+            </label>
+          </section>
+
+          <section class="form-section">
+            <div class="section-heading">
+              <span class="step">2</span>
+              <div>
+                <h2>Placement</h2>
+                <p>The origin becomes datum_lat/datum_lon in the .info file.</p>
+              </div>
+            </div>
+            <div class="field-grid coordinates">
+              <label>West <input id="west" type="number" step="any" required /></label>
+              <label>South <input id="south" type="number" step="any" required /></label>
+              <label>East <input id="east" type="number" step="any" required /></label>
+              <label>North <input id="north" type="number" step="any" required /></label>
+              <label>Origin latitude <input id="origin-lat" type="number" step="any" required /></label>
+              <label>Origin longitude <input id="origin-lon" type="number" step="any" required /></label>
+            </div>
+          </section>
+
+          <section class="form-section">
+            <div class="section-heading">
+              <span class="step">3</span>
+              <div>
+                <h2>Output</h2>
+                <p>Produces one same-basename .tif and .info bundle.</p>
+              </div>
+            </div>
+            <div class="field-grid">
+              <label>Map name <input id="name" value="moos_map" required /></label>
+              <label>Output directory <input id="output-dir" value="~/moos-maps" required /></label>
+            </div>
+            <div class="checks">
+              <label class="check-row"><input id="emit-moos" type="checkbox" /> <span>Also write optional .moos snippet</span></label>
+              <label class="check-row"><input id="force" type="checkbox" /> <span>Replace existing output and refetch tiles</span></label>
+            </div>
+          </section>
+
+          <div class="actions">
+            <button id="plan-button" type="submit" class="secondary">Inspect plan</button>
+            <button id="build-button" type="button">Build map</button>
+          </div>
+        </form>
+
+        <section id="result" class="result-panel" aria-live="polite">
+          <div class="empty-state">
+            <h2>No plan yet</h2>
+            <p>Draw an area and inspect it before downloading tiles.</p>
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script src="/static/app.js"></script>
+  </body>
+</html>
