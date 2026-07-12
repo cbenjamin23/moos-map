@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "moos-map"
+version = "0.1.0"
+description = "Build tile-aligned TIFF background maps for MOOS-IvP"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "httpx>=0.27,<1",
+  "Pillow>=10.4,<13",
+  "uvicorn>=0.30,<1",
+]
+
+[project.optional-dependencies]
+test = [
+  "httpx2>=2.5,<3",
+  "pytest>=8,<10",
+]
+
+[project.scripts]
+moos-map = "moos_map.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+moos_map = ["static/*.html", "static/*.css", "static/*.js"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
