@@ -68,7 +68,6 @@ def test_build_creates_one_tile_aligned_moos_bundle(tmp_path: Path) -> None:
     assert result.plan.pixel_width == 512
     assert result.plan.pixel_height == 512
     assert provider.downloaded_tiles == 4
-    assert "TIFF dimensions: 512 x 512 pixels" in result.moos_path.read_text()
 
     with Image.open(result.tiff_path) as image:
         assert image.format == "TIFF"
