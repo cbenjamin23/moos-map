@@ -83,21 +83,6 @@ BUILTIN_SOURCES: dict[str, MapSource] = {
         coverage="Global",
         note="Satellite imagery with roads and place labels.",
     ),
-    "google-terrain-hybrid": MapSource(
-        id="google-terrain-hybrid",
-        name="Google Terrain Hybrid",
-        kind="xyz",
-        tile_size=256,
-        min_zoom=0,
-        max_zoom=22,
-        url_template="https://mt.google.com/vt/lyrs=p&x={x}&y={y}&z={z}",
-        preview_allowed=True,
-        export_allowed=True,
-        attribution="Google",
-        terms_url="https://www.google.com/help/terms_maps/",
-        coverage="Global",
-        note="Terrain-oriented map with roads and labels. Detail varies by location.",
-    ),
     "esri-world-imagery": MapSource(
         id="esri-world-imagery",
         name="Esri World Imagery",
@@ -116,24 +101,6 @@ BUILTIN_SOURCES: dict[str, MapSource] = {
         coverage="Global",
         note="High-resolution satellite and aerial imagery. Native detail varies by location.",
     ),
-    "esri-world-street": MapSource(
-        id="esri-world-street",
-        name="Esri World Street Map",
-        kind="xyz",
-        tile_size=256,
-        min_zoom=0,
-        max_zoom=19,
-        url_template=(
-            "https://server.arcgisonline.com/ArcGIS/rest/services/"
-            "World_Street_Map/MapServer/tile/{z}/{y}/{x}"
-        ),
-        preview_allowed=True,
-        export_allowed=True,
-        attribution="Esri, HERE, Garmin, and contributors",
-        terms_url="https://www.esri.com/en-us/legal/terms/full-master-agreement",
-        coverage="Global",
-        note="Street map with roads, places, and local features. Native detail varies by location.",
-    ),
     "esri-world-topo": MapSource(
         id="esri-world-topo",
         name="Esri World Topographic Map",
@@ -151,47 +118,6 @@ BUILTIN_SOURCES: dict[str, MapSource] = {
         terms_url="https://www.esri.com/en-us/legal/terms/full-master-agreement",
         coverage="Global",
         note="Topographic map with terrain, hydrography, roads, and place labels.",
-    ),
-    "esri-ocean": MapSource(
-        id="esri-ocean",
-        name="Esri Ocean / Bathymetry",
-        kind="xyz",
-        tile_size=256,
-        min_zoom=0,
-        max_zoom=16,
-        url_template=(
-            "https://server.arcgisonline.com/ArcGIS/rest/services/"
-            "Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}"
-        ),
-        preview_allowed=True,
-        export_allowed=True,
-        attribution="Esri, Garmin, GEBCO, NOAA, and contributors",
-        terms_url="https://www.esri.com/en-us/legal/terms/full-master-agreement",
-        coverage="Global",
-        note="Ocean basemap with bathymetry and marine geographic context.",
-    ),
-    "noaa-chart-display": MapSource(
-        id="noaa-chart-display",
-        name="NOAA Nautical Charts",
-        kind="xyz",
-        tile_size=256,
-        min_zoom=2,
-        max_zoom=16,
-        url_template=(
-            "https://gis.charttools.noaa.gov/arcgis/rest/services/"
-            "MarineChart_Services/NOAACharts/MapServer/tile/{source_z}/{y}/{x}"
-        ),
-        preview_allowed=True,
-        export_allowed=True,
-        attribution="NOAA Office of Coast Survey",
-        terms_url="https://www.nauticalcharts.noaa.gov/data/gis-data-and-services.html",
-        coverage="U.S. coastal waters and territories",
-        note=(
-            "Traditional chart portrayal derived from current NOAA ENC data. "
-            "The online cache tops out at zoom 16; regional NOAA MBTiles may contain "
-            "different zoom coverage. Not for navigation."
-        ),
-        url_zoom_offset=-2,
     ),
 }
 

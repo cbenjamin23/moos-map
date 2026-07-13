@@ -140,7 +140,7 @@ class MapRequest:
     output_dir: Path = field(default_factory=lambda: Path.home() / "moos-maps")
     emit_moos: bool = False
     force: bool = False
-    overwrite: bool = False
+    overwrite: bool = True
     refresh_tiles: bool = False
     custom_url_template: str | None = None
     accept_custom_source_terms: bool = False

@@ -6,7 +6,7 @@ from moos_map.errors import ValidationError
 from moos_map.sources import BUILTIN_SOURCES, resolve_source
 
 
-def test_high_detail_ray_and_anaxi_sources_are_built_in() -> None:
+def test_curated_high_detail_sources_are_built_in() -> None:
     google = resolve_source("google-satellite")
     hybrid = resolve_source("google-hybrid")
     esri = resolve_source("esri-world-imagery")
@@ -16,13 +16,13 @@ def test_high_detail_ray_and_anaxi_sources_are_built_in() -> None:
     assert esri.max_zoom == 21
     assert google.export_allowed is True
     assert esri.export_allowed is True
-    assert {
+    assert set(BUILTIN_SOURCES) == {
         "google-maps",
-        "google-terrain-hybrid",
-        "esri-world-street",
+        "google-satellite",
+        "google-hybrid",
+        "esri-world-imagery",
         "esri-world-topo",
-        "esri-ocean",
-    }.issubset(BUILTIN_SOURCES)
+    }
     assert "usgs-imagery" not in BUILTIN_SOURCES
     assert "usgs-topo" not in BUILTIN_SOURCES
     assert "osm-preview" not in BUILTIN_SOURCES
@@ -30,14 +30,6 @@ def test_high_detail_ray_and_anaxi_sources_are_built_in() -> None:
         "Anaxi" not in source.note and "Ray" not in source.note
         for source in BUILTIN_SOURCES.values()
     )
-
-
-def test_noaa_chart_source_adapts_its_shifted_tile_zoom() -> None:
-    noaa = resolve_source("noaa-chart-display")
-
-    assert noaa.max_zoom == 16
-    assert noaa.url_zoom_offset == -2
-    assert noaa.tile_url(16, 19835, 24242).endswith("/tile/14/24242/19835")
 
 
 def test_custom_xyz_requires_all_placeholders() -> None:

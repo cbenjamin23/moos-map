@@ -87,12 +87,22 @@ def test_build_creates_one_tile_aligned_moos_bundle(tmp_path: Path) -> None:
     assert info.origin == Origin(latitude=42.36, longitude=-71.087)
 
 
-def test_existing_output_requires_force(tmp_path: Path) -> None:
+def test_existing_output_is_replaced_by_default(tmp_path: Path) -> None:
     request = local_request(tmp_path)
     build_map(request, provider=FakeProvider())
+    replacement = FakeProvider()
 
-    with pytest.raises(ValidationError, match="Output already exists"):
-        build_map(request, provider=FakeProvider())
+    result = build_map(request, provider=replacement)
+
+    assert result.verification["ok"] is True
+    assert replacement.downloaded_tiles == 4
+
+
+def test_existing_output_can_be_protected(tmp_path: Path) -> None:
+    build_map(local_request(tmp_path), provider=FakeProvider())
+
+    with pytest.raises(ValidationError, match="Output protection is enabled"):
+        build_map(local_request(tmp_path, overwrite=False), provider=FakeProvider())
 
 
 def test_failed_force_build_preserves_existing_bundle(
@@ -117,14 +127,11 @@ def test_failed_force_build_preserves_existing_bundle(
     assert original.info_path.read_bytes() == original_info
 
 
-def test_overwrite_and_tile_refresh_are_independent(tmp_path: Path) -> None:
+def test_default_overwrite_does_not_refresh_tiles(tmp_path: Path) -> None:
     build_map(local_request(tmp_path), provider=FakeProvider())
 
     overwrite_provider = FakeProvider()
-    build_map(
-        local_request(tmp_path, overwrite=True),
-        provider=overwrite_provider,
-    )
+    build_map(local_request(tmp_path), provider=overwrite_provider)
     assert overwrite_provider.force_values
     assert not any(overwrite_provider.force_values)
 

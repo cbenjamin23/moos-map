@@ -210,7 +210,7 @@ def build_map(
     existing = [path for path in targets if path and path.exists()]
     if existing and not request.overwrite_outputs:
         raise ValidationError(
-            "Output already exists; enable overwrite or use --overwrite to replace it: "
+            "Output protection is enabled and these files already exist: "
             + ", ".join(str(path) for path in existing)
         )
 
