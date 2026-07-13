@@ -60,7 +60,7 @@ georeferencing tags in place of the sidecar.
 3. Local browser UI over the same core.
 4. Compatibility and end-to-end validation with current MOOS-IvP.
 5. Exact crop and curated high-detail Ray/Anaxi sources. (Complete in v0.3.)
-6. NOAA charts and UI/CLI workflow polish. (Complete in v0.5.)
+6. Curated source cleanup and UI/CLI workflow polish. (Complete in v0.5.)
 7. Multiple-background workflows after the pMarineViewer texture allocation
    defect is handled.
 8. UTM background-display correction as the final compatibility milestone;

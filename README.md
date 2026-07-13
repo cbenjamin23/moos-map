@@ -38,9 +38,10 @@ move the pointer, and click the opposite corner to finish the region. A new
 first click immediately starts replacing the prior selection. Click-hold-drag
 pans the map; the wheel and map controls zoom it. Source, zoom, and selection
 changes update the summary automatically; there is no separate plan step.
-The collapsed section 04, Advanced placement, exposes editable map
-corners and an optional existing-mission origin override. Export zoom defaults
-to 17 in both the UI and CLI; it remains adjustable up to each source's limit.
+The collapsed section 04, Advanced placement, exposes editable map corners and
+an optional existing-mission origin override. After selecting a region, drag
+the red origin dot to set that origin visually. Export zoom defaults to 17 in
+both the UI and CLI; it remains adjustable up to each source's limit.
 
 ## CLI
 
@@ -73,9 +74,10 @@ moos-map build \
   --emit-moos
 ```
 
-Use `--overwrite` only to replace an existing same-name output bundle. Use
+Same-name output bundles are replaced atomically by default. Use
+`--no-overwrite` when an existing bundle must be protected. Use
 `--refresh-tiles` only to bypass the local imagery cache and download fresh
-source tiles. They are independent options.
+source tiles.
 
 Verify any same-basename TIFF/info pair:
 
@@ -113,29 +115,23 @@ in the same UTM zone as the map.
 
 ## Sources and offline data
 
-Built-in export sources:
+Built-in sources:
 
 - `google-satellite` — highest-detail default, confirmed through zoom 22 at MIT.
 - `google-hybrid` — Google satellite imagery with labels, through zoom 22.
 - `google-maps` — detailed Google street map, through zoom 22 at MIT.
-- `google-terrain-hybrid` — Google terrain-oriented map with labels.
 - `esri-world-imagery` — the satellite source used by Ray, through zoom 21 at MIT.
-- `esri-world-street` — detailed Esri street map, through zoom 19 at MIT.
 - `esri-world-topo` — detailed Esri topographic map, through zoom 19 at MIT.
-- `esri-ocean` — the ocean/bathymetry layer used by Ray, through zoom 16.
-- `noaa-chart-display` — NOAA nautical-chart portrayal for U.S. waters,
-  through online zoom 16.
 - Local MBTiles archives supplied by the user.
 
-NOAA also publishes regional chart MBTiles. Downloaded packages can be selected
-through the existing Local MBTiles source when offline or region-specific chart
-coverage is preferred.
+The built-ins are the retained Google and Esri options from Anaxi and Ray's
+prototype. Native detail varies geographically. A custom XYZ source can be
+used with `--url-template` after `--accept-source-terms` confirms access.
 
-The built-ins are now the useful Google and Esri options from Anaxi and Ray's
-prototype. The lower-detail USGS sources from v0.1 and OpenStreetMap Standard
-are no longer built in; they remain possible through a custom XYZ URL.
-Native detail varies geographically. A custom XYZ source can be used with
-`--url-template` after `--accept-source-terms` confirms access.
+Provider availability in the registry is not a grant of content-export rights.
+Use Local MBTiles or a custom source with explicit static/offline permission for
+a policy-defensible deployment; see the source provider's current terms before
+exporting hosted imagery.
 
 The tile cache is stored under `${XDG_CACHE_HOME:-~/.cache}/moos-map/tiles`.
 
