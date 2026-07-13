@@ -15,7 +15,21 @@ def test_health_and_static_app_load() -> None:
     assert "MOOS Map" in response.text
     assert 'id="zoom" type="range" min="0" max="22" value="17"' in response.text
     assert "Advanced placement" in response.text
+    assert '<span class="section-kicker">04</span>' in response.text
+    assert 'id="overlay"' not in response.text
+    assert '<details id="source-details" class="compact-details">' in response.text
+    assert "Highest-detail satellite option from Anaxi" not in response.text
+    assert 'id="overwrite"' in response.text
+    assert 'id="refresh-tiles"' in response.text
+    assert 'id="force"' not in response.text
     assert "placement-drawer" not in response.text
+
+
+def test_sources_api_lists_noaa_without_extra_layer_catalogs() -> None:
+    payload = client.get("/api/sources").json()
+
+    assert set(payload) == {"sources"}
+    assert "noaa-chart-display" in {source["id"] for source in payload["sources"]}
 
 
 def test_plan_api_defaults_to_zoom_17() -> None:

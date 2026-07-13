@@ -38,10 +38,14 @@
 
             <label>
               Map source
-              <span class="info-icon" tabindex="0" data-tip="Google Satellite is the highest-detail default. Hybrid adds labels. Esri World Imagery is the source Ray used.">i</span>
+              <span class="info-icon" tabindex="0" data-tip="Choose the base imagery or chart style. Open Source details below for coverage, zoom range, and attribution.">i</span>
               <select id="source" name="source"></select>
             </label>
-            <div id="source-note" class="source-note"></div>
+            <details id="source-details" class="compact-details">
+              <summary>Source details</summary>
+              <div id="source-note" class="source-note"></div>
+            </details>
+
 
             <div id="custom-source-fields" class="conditional-fields hidden">
               <label>
@@ -100,9 +104,14 @@
                 <span class="info-icon" tabindex="0" data-tip="The optional .moos file is a copy-ready configuration snippet containing LatOrigin, LongOrigin, and tiff_file. pMarineViewer only requires the .tif and .info files.">i</span>
               </label>
               <label class="check-row">
-                <input id="force" type="checkbox" />
-                <span>Replace output and refresh source tiles</span>
-                <span class="info-icon" tabindex="0" data-tip="Normally cached tiles are reused and existing outputs are protected. Enable this to redownload tiles and replace files with the same name.">i</span>
+                <input id="overwrite" type="checkbox" />
+                <span>Overwrite existing output files</span>
+                <span class="info-icon" tabindex="0" data-tip="Enable this only when a .tif, .info, or optional .moos file with this map name already exists and should be replaced. It does not redownload map imagery.">i</span>
+              </label>
+              <label class="check-row">
+                <input id="refresh-tiles" type="checkbox" />
+                <span>Redownload source imagery</span>
+                <span class="info-icon" tabindex="0" data-tip="Normally the local tile cache is reused. Enable this when the provider's imagery or chart data may have changed and you want fresh downloads. It does not control output replacement.">i</span>
               </label>
             </div>
 
@@ -128,11 +137,16 @@
               <span>Click two opposite corners on the map to calculate the exact output.</span>
             </div>
           </div>
+        </section>
 
+        <section class="panel-section advanced-panel">
           <details id="placement-advanced" class="advanced-section">
-            <summary>
-              <span>Advanced placement</span>
-              <small>Exact corners &amp; mission origin</small>
+            <summary class="advanced-heading">
+              <span class="advanced-title">
+                <span class="section-kicker">04</span>
+                <span class="advanced-name">Advanced placement</span>
+              </span>
+              <small>Optional coordinates</small>
             </summary>
             <div class="advanced-content">
               <p class="advanced-copy">
