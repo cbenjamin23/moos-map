@@ -26,14 +26,14 @@ def _add_machine_output(parser: argparse.ArgumentParser) -> None:
 
 def _add_map_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "--bounds",
+        "--corners",
         nargs=4,
         type=float,
-        metavar=("WEST", "SOUTH", "EAST", "NORTH"),
+        metavar=("LAT1", "LON1", "LAT2", "LON2"),
         required=True,
         help=(
-            "Two opposite WGS84 corners expressed as west south east north "
-            "(bottom-left longitude/latitude, then top-right longitude/latitude)"
+            "Two diagonally opposite WGS84 corners as latitude/longitude pairs; "
+            "either corner order is accepted"
         ),
     )
     parser.add_argument(
@@ -41,8 +41,7 @@ def _add_map_arguments(parser: argparse.ArgumentParser) -> None:
         nargs=2,
         type=float,
         metavar=("LAT", "LON"),
-        required=True,
-        help="MOOS LatOrigin and LongOrigin",
+        help="MOOS LatOrigin and LongOrigin (default: map center)",
     )
     parser.add_argument(
         "--zoom", type=int, default=17, help="XYZ zoom level (default: 17)"
@@ -72,11 +71,24 @@ def _add_map_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def _request_from_args(args: argparse.Namespace) -> MapRequest:
-    west, south, east, north = args.bounds
-    latitude, longitude = args.origin
+    latitude_1, longitude_1, latitude_2, longitude_2 = args.corners
+    bounds = Bounds(
+        west=min(longitude_1, longitude_2),
+        south=min(latitude_1, latitude_2),
+        east=max(longitude_1, longitude_2),
+        north=max(latitude_1, latitude_2),
+    )
+    if args.origin is None:
+        origin = Origin(
+            latitude=(bounds.south + bounds.north) / 2,
+            longitude=(bounds.west + bounds.east) / 2,
+        )
+    else:
+        latitude, longitude = args.origin
+        origin = Origin(latitude=latitude, longitude=longitude)
     return MapRequest(
-        bounds=Bounds(west=west, south=south, east=east, north=north),
-        origin=Origin(latitude=latitude, longitude=longitude),
+        bounds=bounds,
+        origin=origin,
         zoom=args.zoom,
         source_id=args.source,
         name=getattr(args, "name", "moos_map"),
