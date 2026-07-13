@@ -15,7 +15,7 @@ from moos_map.sources import BUILTIN_SOURCES, resolve_source
 
 def test_http_provider_validates_and_reuses_disk_cache(tmp_path: Path) -> None:
     source = replace(
-        BUILTIN_SOURCES["usgs-imagery"],
+        BUILTIN_SOURCES["google-satellite"],
         id="test-http",
         url_template="https://example.test/{z}/{x}/{y}.png",
     )

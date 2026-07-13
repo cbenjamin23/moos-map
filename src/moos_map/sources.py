@@ -36,6 +36,21 @@ class MapSource:
 
 
 BUILTIN_SOURCES: dict[str, MapSource] = {
+    "google-maps": MapSource(
+        id="google-maps",
+        name="Google Maps",
+        kind="xyz",
+        tile_size=256,
+        min_zoom=0,
+        max_zoom=22,
+        url_template="https://mt.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
+        preview_allowed=True,
+        export_allowed=True,
+        attribution="Google",
+        terms_url="https://www.google.com/help/terms_maps/",
+        coverage="Global; maximum native detail varies by location",
+        note="High-detail street map from Anaxi; confirmed through zoom 22 at MIT.",
+    ),
     "google-satellite": MapSource(
         id="google-satellite",
         name="Google Satellite",
@@ -66,6 +81,21 @@ BUILTIN_SOURCES: dict[str, MapSource] = {
         coverage="Global; maximum native detail varies by location",
         note="Satellite imagery with road and place labels, matching Anaxi's hybrid source.",
     ),
+    "google-terrain-hybrid": MapSource(
+        id="google-terrain-hybrid",
+        name="Google Terrain Hybrid",
+        kind="xyz",
+        tile_size=256,
+        min_zoom=0,
+        max_zoom=22,
+        url_template="https://mt.google.com/vt/lyrs=p&x={x}&y={y}&z={z}",
+        preview_allowed=True,
+        export_allowed=True,
+        attribution="Google",
+        terms_url="https://www.google.com/help/terms_maps/",
+        coverage="Global; terrain detail varies by location and scale",
+        note="Terrain-oriented map with labels from Anaxi.",
+    ),
     "esri-world-imagery": MapSource(
         id="esri-world-imagery",
         name="Esri World Imagery",
@@ -84,62 +114,59 @@ BUILTIN_SOURCES: dict[str, MapSource] = {
         coverage="Global; maximum native detail varies by location",
         note="The satellite source used by Ray's prototype; confirmed through zoom 21 at MIT.",
     ),
-    "usgs-imagery": MapSource(
-        id="usgs-imagery",
-        name="USGS Imagery",
-        kind="xyz",
-        tile_size=256,
-        min_zoom=0,
-        max_zoom=16,
-        url_template=(
-            "https://basemap.nationalmap.gov/arcgis/rest/services/"
-            "USGSImageryOnly/MapServer/tile/{z}/{y}/{x}"
-        ),
-        preview_allowed=True,
-        export_allowed=True,
-        attribution="USGS The National Map / USDA",
-        terms_url=(
-            "https://www.usgs.gov/faqs/what-are-terms-uselicensing-map-services-"
-            "and-data-national-map"
-        ),
-        coverage="United States and territories",
-        note="Cached orthoimagery; meaningful cached detail currently ends at zoom 16.",
-    ),
-    "usgs-topo": MapSource(
-        id="usgs-topo",
-        name="USGS Topographic Map",
-        kind="xyz",
-        tile_size=256,
-        min_zoom=0,
-        max_zoom=16,
-        url_template=(
-            "https://basemap.nationalmap.gov/arcgis/rest/services/"
-            "USGSTopo/MapServer/tile/{z}/{y}/{x}"
-        ),
-        preview_allowed=True,
-        export_allowed=True,
-        attribution="USGS The National Map",
-        terms_url=(
-            "https://www.usgs.gov/faqs/what-are-terms-uselicensing-map-services-"
-            "and-data-national-map"
-        ),
-        coverage="United States and territories",
-        note="Authoritative topographic basemap; meaningful cached detail ends at zoom 16.",
-    ),
-    "osm-preview": MapSource(
-        id="osm-preview",
-        name="OpenStreetMap Standard",
+    "esri-world-street": MapSource(
+        id="esri-world-street",
+        name="Esri World Street Map",
         kind="xyz",
         tile_size=256,
         min_zoom=0,
         max_zoom=19,
-        url_template="https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+        url_template=(
+            "https://server.arcgisonline.com/ArcGIS/rest/services/"
+            "World_Street_Map/MapServer/tile/{z}/{y}/{x}"
+        ),
         preview_allowed=True,
         export_allowed=True,
-        attribution="OpenStreetMap contributors",
-        terms_url="https://operations.osmfoundation.org/policies/tiles/",
+        attribution="Esri, HERE, Garmin, and contributors",
+        terms_url="https://www.esri.com/en-us/legal/terms/full-master-agreement",
+        coverage="Global; maximum native detail varies by location",
+        note="Detailed Esri street map from Anaxi; useful native detail at MIT through zoom 19.",
+    ),
+    "esri-world-topo": MapSource(
+        id="esri-world-topo",
+        name="Esri World Topographic Map",
+        kind="xyz",
+        tile_size=256,
+        min_zoom=0,
+        max_zoom=19,
+        url_template=(
+            "https://server.arcgisonline.com/ArcGIS/rest/services/"
+            "World_Topo_Map/MapServer/tile/{z}/{y}/{x}"
+        ),
+        preview_allowed=True,
+        export_allowed=True,
+        attribution="Esri and contributors",
+        terms_url="https://www.esri.com/en-us/legal/terms/full-master-agreement",
+        coverage="Global; maximum native detail varies by location",
+        note="Detailed topographic source from Anaxi; useful native detail at MIT through zoom 19.",
+    ),
+    "esri-ocean": MapSource(
+        id="esri-ocean",
+        name="Esri Ocean / Bathymetry",
+        kind="xyz",
+        tile_size=256,
+        min_zoom=0,
+        max_zoom=16,
+        url_template=(
+            "https://server.arcgisonline.com/ArcGIS/rest/services/"
+            "Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}"
+        ),
+        preview_allowed=True,
+        export_allowed=True,
+        attribution="Esri, Garmin, GEBCO, NOAA, and contributors",
+        terms_url="https://www.esri.com/en-us/legal/terms/full-master-agreement",
         coverage="Global",
-        note="Street-map source used by Ray and Anaxi; export is enabled for small-area use.",
+        note="The bathymetry layer from Ray's prototype; native cached detail ends at zoom 16.",
     ),
 }
 
