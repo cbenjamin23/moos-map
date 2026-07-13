@@ -80,7 +80,7 @@ def _request_from_args(args: argparse.Namespace) -> MapRequest:
         output_dir=getattr(args, "output_dir", Path.home() / "moos-maps"),
         emit_moos=getattr(args, "emit_moos", False),
         force=getattr(args, "force", False),
-        overwrite=getattr(args, "overwrite", False),
+        overwrite=getattr(args, "overwrite", True),
         refresh_tiles=getattr(args, "refresh_tiles", False),
         custom_url_template=args.url_template,
         accept_custom_source_terms=args.accept_source_terms,
@@ -178,9 +178,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--emit-moos", action="store_true", help="Write an optional .moos snippet"
     )
     build_command.add_argument(
+        "--no-overwrite",
+        dest="overwrite",
+        action="store_false",
+        default=True,
+        help="Refuse to replace existing output files with the same map name",
+    )
+    build_command.add_argument(
         "--overwrite",
+        dest="overwrite",
         action="store_true",
-        help="Replace existing output files with the same map name",
+        help=argparse.SUPPRESS,
     )
     build_command.add_argument(
         "--refresh-tiles",
