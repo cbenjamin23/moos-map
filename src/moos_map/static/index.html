@@ -12,14 +12,14 @@
         <p class="eyebrow">MOOS-IvP utility</p>
         <h1>MOOS Map</h1>
       </div>
-      <p class="tagline">Drag a region. Review the exact crop. Build the TIFF.</p>
+      <p class="tagline">Click two corners. Review the exact crop. Build the TIFF.</p>
     </header>
 
     <main class="workspace">
       <section class="map-panel" aria-label="Map selection">
         <div id="map"></div>
         <div id="map-hint" class="map-hint">
-          Click and drag anywhere on the map to select an export region.
+          Click once to start a region. Click-hold-drag pans the map.
         </div>
       </section>
 
@@ -118,14 +118,14 @@
               <p class="section-kicker">03</p>
               <h2>
                 Summary
-                <span class="info-icon" tabindex="0" data-tip="This updates automatically after every drag, source change, or zoom change. It does not download imagery.">i</span>
+                <span class="info-icon" tabindex="0" data-tip="This updates automatically after every completed selection, source change, or zoom change. It does not download imagery.">i</span>
               </h2>
             </div>
           </div>
           <div id="summary" class="summary" aria-live="polite">
             <div class="empty-state">
               <strong>No region selected</strong>
-              <span>Drag a rectangle on the map to calculate the exact output.</span>
+              <span>Click two opposite corners on the map to calculate the exact output.</span>
             </div>
           </div>
         </section>

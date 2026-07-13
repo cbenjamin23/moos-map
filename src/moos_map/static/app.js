@@ -9,8 +9,8 @@
     previewLayer: null,
     selectionLayer: null,
     originMarker: null,
-    drawing: false,
-    drawStart: null,
+    selecting: false,
+    selectionStart: null,
     previousBounds: null,
     planTimer: null,
     planSequence: 0,
@@ -18,7 +18,7 @@
 
   const map = L.map("map", {
     zoomControl: true,
-    dragging: false,
+    dragging: true,
     boxZoom: false,
     doubleClickZoom: false,
   }).setView([42.36, -71.087], 18);
@@ -153,59 +153,78 @@
     if (fit) {
       map.fitBounds(state.selectionLayer.bounds, { padding: [35, 35], maxZoom: 21 });
     }
-    $("map-hint").textContent = "Drag again anywhere to replace this region.";
+    $("map-hint").textContent = "Click once to replace this region. Click-hold-drag pans.";
     schedulePlan(0);
   }
 
-  function beginDrag(event) {
-    if (event.button !== 0 || event.target.closest(".leaflet-control")) return;
-    event.preventDefault();
-    state.drawing = true;
+  function beginSelection(event) {
+    state.selecting = true;
+    map.getContainer().classList.add("selecting");
     state.previousBounds = state.bounds;
     state.bounds = null;
     state.plan = null;
+    updateBoundsReadout();
     $("build-button").disabled = true;
-    state.drawStart = map.mouseEventToContainerPoint(event);
+    state.selectionStart = event.latlng;
     if (!state.selectionLayer) state.selectionLayer = createBoxOverlay();
     state.selectionLayer.hide();
     state.selectionLayer.element.classList.add("drawing");
     if (state.originMarker) state.originMarker.hide();
-    $("summary").innerHTML = emptySummary("Drawing region…", "Release to calculate the exact crop.");
-    $("map-hint").textContent = "Release to use this region.";
-    map.getContainer().setPointerCapture(event.pointerId);
+    $("summary").innerHTML = emptySummary(
+      "Choosing region…",
+      "Move the pointer, then click the opposite corner.",
+    );
+    $("map-hint").textContent = "Move to the opposite corner and click. Click-hold-drag still pans.";
   }
 
-  function updateDrag(event) {
-    if (!state.drawing) return;
-    const current = map.mouseEventToContainerPoint(event);
-    const startLatLng = map.containerPointToLatLng(state.drawStart);
-    const currentLatLng = map.containerPointToLatLng(current);
-    state.selectionLayer.setBounds(L.latLngBounds(startLatLng, currentLatLng));
+  function updateSelection(event) {
+    if (!state.selecting) return;
+    state.selectionLayer.setBounds(L.latLngBounds(state.selectionStart, event.latlng));
   }
 
-  function endDrag(event) {
-    if (!state.drawing) return;
-    state.drawing = false;
-    const current = map.mouseEventToContainerPoint(event);
-    const width = Math.abs(current.x - state.drawStart.x);
-    const height = Math.abs(current.y - state.drawStart.y);
-    state.selectionLayer.element.classList.remove("drawing");
-
-    if (width >= 8 && height >= 8) {
-      const startLatLng = map.containerPointToLatLng(state.drawStart);
-      const currentLatLng = map.containerPointToLatLng(current);
-      finalizeSelection(leafletBoundsToObject(L.latLngBounds(startLatLng, currentLatLng)));
-    } else if (state.previousBounds) {
-      finalizeSelection(state.previousBounds);
-    } else {
-      state.selectionLayer.hide();
-      $("summary").innerHTML = emptySummary(
-        "No region selected",
-        "Click and drag—not just click—to define the export crop.",
-      );
-      $("map-hint").textContent = "Click and drag anywhere on the map to select an export region.";
+  function finishSelection(event) {
+    const start = map.latLngToContainerPoint(state.selectionStart);
+    const end = map.latLngToContainerPoint(event.latlng);
+    if (Math.abs(end.x - start.x) < 8 || Math.abs(end.y - start.y) < 8) {
+      $("map-hint").textContent = "Move farther from the first corner, then click again.";
+      return;
     }
+
+    state.selecting = false;
+    map.getContainer().classList.remove("selecting");
+    state.selectionLayer.element.classList.remove("drawing");
+    finalizeSelection(
+      leafletBoundsToObject(L.latLngBounds(state.selectionStart, event.latlng)),
+    );
+    state.selectionStart = null;
     state.previousBounds = null;
+  }
+
+  function handleMapClick(event) {
+    if (state.selecting) finishSelection(event);
+    else beginSelection(event);
+  }
+
+  function cancelSelection() {
+    if (!state.selecting) return;
+    state.selecting = false;
+    map.getContainer().classList.remove("selecting");
+    state.selectionStart = null;
+    state.selectionLayer.element.classList.remove("drawing");
+    if (state.previousBounds) {
+      const previous = state.previousBounds;
+      state.previousBounds = null;
+      finalizeSelection(previous);
+      return;
+    }
+    state.selectionLayer.hide();
+    state.previousBounds = null;
+    updateBoundsReadout();
+    $("summary").innerHTML = emptySummary(
+      "No region selected",
+      "Click one corner, move the pointer, then click the opposite corner.",
+    );
+    $("map-hint").textContent = "Click once to start a region. Click-hold-drag pans the map.";
   }
 
   function setPreview(source) {
@@ -362,7 +381,7 @@
       <li>${build.downloaded_tiles} downloaded, ${build.cache_hits} from cache</li>
     </ul>` : "";
     return `${success}<div class="summary-metrics">
-      ${metric("Exact TIFF crop", `${plan.pixel_width.toLocaleString()} × ${plan.pixel_height.toLocaleString()} px`, "The TIFF is resampled to the exact dragged bounds; extra source-tile margins are discarded.")}
+      ${metric("Exact TIFF crop", `${plan.pixel_width.toLocaleString()} × ${plan.pixel_height.toLocaleString()} px`, "The TIFF is resampled to the exact selected bounds; extra source-tile margins are discarded.")}
       ${metric("Source tiles", `${plan.tiles.count} (${plan.tiles.columns} × ${plan.tiles.rows})`, "These tiles are downloaded to cover the selection before exact cropping. They are cached for reuse.")}
       ${metric("Source resolution", `${plan.approximate_meters_per_pixel.toFixed(3)} m/px`, "Nominal Web Mercator ground resolution at the selected latitude and export zoom.")}
       ${metric("Ground area", `${formatMeters(plan.approximate_ground_width_m)} × ${formatMeters(plan.approximate_ground_height_m)}`, "Approximate geographic width and height of the exact selected bounds.")}
@@ -414,12 +433,12 @@
     $("placement-content").inert = !open;
   }
 
-  const mapElement = map.getContainer();
-  mapElement.addEventListener("pointerdown", beginDrag);
-  mapElement.addEventListener("pointermove", updateDrag);
-  mapElement.addEventListener("pointerup", endDrag);
-  mapElement.addEventListener("pointercancel", endDrag);
+  map.on("click", handleMapClick);
+  map.on("mousemove", updateSelection);
   map.on("move zoom resize", positionOverlays);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") cancelSelection();
+  });
 
   $("source").addEventListener("change", configureSource);
   $("zoom").addEventListener("input", () => {
