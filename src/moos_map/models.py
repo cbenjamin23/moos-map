@@ -134,7 +134,7 @@ class PixelWindow:
 class MapRequest:
     bounds: Bounds
     origin: Origin
-    zoom: int
+    zoom: int = 17
     source_id: str = "google-satellite"
     name: str = "moos_map"
     output_dir: Path = field(default_factory=lambda: Path.home() / "moos-maps")
