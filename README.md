@@ -33,10 +33,12 @@ python -m pip install -e '.[test]'
 moos-map ui
 ```
 
-The UI opens on `http://127.0.0.1:8765`. Click and drag directly on the map to
-select a region. Dragging again immediately replaces it. Source, zoom, and
-selection changes update the summary automatically; there is no separate plan
-step. Advanced MOOS origin controls live in the persistent Placement drawer.
+The UI opens on `http://127.0.0.1:8765`. Click once to set the first corner,
+move the pointer, and click the opposite corner to finish the region. A new
+first click immediately starts replacing the prior selection. Click-hold-drag
+pans the map; the wheel and map controls zoom it. Source, zoom, and selection
+changes update the summary automatically; there is no separate plan step.
+Advanced MOOS origin controls live in the persistent Placement drawer.
 
 ## CLI
 
@@ -84,7 +86,7 @@ Remote services divide imagery into 256-by-256-pixel source tiles. MOOS Map
 downloads every tile touched by the requested rectangle, stitches them in
 memory, and performs a fractional-pixel resample to the exact requested
 bounds. The extra source-tile margins are discarded. The `.info` therefore
-records the dragged or CLI-requested bounds exactly.
+records the UI-selected or CLI-requested bounds exactly.
 
 The summary estimates the residual placement error caused by pMarineViewer's
 affine raster mapping. Current `BackImg` derives an unrotated rectangle from
@@ -106,13 +108,17 @@ Built-in export sources:
 
 - `google-satellite` — highest-detail default, confirmed through zoom 22 at MIT.
 - `google-hybrid` — Google satellite imagery with labels, through zoom 22.
+- `google-maps` — detailed Google street map, through zoom 22 at MIT.
+- `google-terrain-hybrid` — Google terrain-oriented map with labels.
 - `esri-world-imagery` — the satellite source used by Ray, through zoom 21 at MIT.
-- `usgs-imagery` — U.S. orthoimagery, zoom 0–16.
-- `usgs-topo` — U.S. topographic map, zoom 0–16.
-- `osm-preview` — OpenStreetMap Standard, zoom 0–19.
+- `esri-world-street` — detailed Esri street map, through zoom 19 at MIT.
+- `esri-world-topo` — detailed Esri topographic map, through zoom 19 at MIT.
+- `esri-ocean` — the ocean/bathymetry layer used by Ray, through zoom 16.
 - Local MBTiles archives supplied by the user.
 
-The Google and Esri endpoints match the sources in Anaxi and Ray's prototype.
+The built-ins are now the useful Google and Esri options from Anaxi and Ray's
+prototype. The lower-detail USGS sources from v0.1 and OpenStreetMap Standard
+are no longer built in; they remain possible through a custom XYZ URL.
 Native detail varies geographically. A custom XYZ source can be used with
 `--url-template` after `--accept-source-terms` confirms access.
 
