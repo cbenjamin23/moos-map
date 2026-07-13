@@ -13,6 +13,28 @@ def test_health_and_static_app_load() -> None:
     response = client.get("/")
     assert response.status_code == 200
     assert "MOOS Map" in response.text
+    assert 'id="zoom" type="range" min="0" max="22" value="17"' in response.text
+    assert "Advanced placement" in response.text
+    assert "placement-drawer" not in response.text
+
+
+def test_plan_api_defaults_to_zoom_17() -> None:
+    response = client.post(
+        "/api/plan",
+        json={
+            "bounds": {
+                "west": -71.088,
+                "south": 42.358,
+                "east": -71.087,
+                "north": 42.359,
+            },
+            "origin": {"latitude": 42.3585, "longitude": -71.0875},
+            "source_id": "google-satellite",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["tiles"]["zoom"] == 17
 
 
 def test_plan_api_uses_shared_core() -> None:

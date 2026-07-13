@@ -63,10 +63,10 @@
 
             <label class="zoom-label">
               Export zoom
-              <span class="info-icon" tabindex="0" data-tip="Each zoom level doubles linear pixel density. Higher zoom gives sharper TIFFs but downloads roughly four times as many tiles for the same region.">i</span>
+              <span class="info-icon" tabindex="0" data-tip="Zoom 17 is the balanced default, not a cap. Each higher level doubles linear pixel density and uses roughly four times as many tiles for the same region. Google imagery can reach zoom 22 where native detail exists.">i</span>
               <div class="range-row">
-                <input id="zoom" type="range" min="0" max="22" value="20" />
-                <output id="zoom-value" for="zoom">20</output>
+                <input id="zoom" type="range" min="0" max="22" value="17" />
+                <output id="zoom-value" for="zoom">17</output>
               </div>
             </label>
           </section>
@@ -128,46 +128,52 @@
               <span>Click two opposite corners on the map to calculate the exact output.</span>
             </div>
           </div>
+
+          <details id="placement-advanced" class="advanced-section">
+            <summary>
+              <span>Advanced placement</span>
+              <small>Exact corners &amp; mission origin</small>
+            </summary>
+            <div class="advanced-content">
+              <p class="advanced-copy">
+                Dragging on the map fills these coordinates. You can also enter the
+                top-left and bottom-right corners directly.
+              </p>
+
+              <div class="corner-grid">
+                <fieldset>
+                  <legend>Top left</legend>
+                  <div class="field-grid coordinates">
+                    <label>Latitude <input id="corner-north" type="number" step="any" placeholder="North" /></label>
+                    <label>Longitude <input id="corner-west" type="number" step="any" placeholder="West" /></label>
+                  </div>
+                </fieldset>
+                <fieldset>
+                  <legend>Bottom right</legend>
+                  <div class="field-grid coordinates">
+                    <label>Latitude <input id="corner-south" type="number" step="any" placeholder="South" /></label>
+                    <label>Longitude <input id="corner-east" type="number" step="any" placeholder="East" /></label>
+                  </div>
+                </fieldset>
+              </div>
+              <p id="corner-error" class="inline-error" hidden></p>
+
+              <div class="origin-settings">
+                <label class="check-row origin-mode">
+                  <input id="auto-origin" type="checkbox" checked />
+                  <span>Use map center as mission origin</span>
+                  <span class="info-icon" tabindex="0" data-tip="Leave this on for a new mission. Turn it off only when this map must match an existing mission's LatOrigin and LongOrigin; the .info datum must match those values.">i</span>
+                </label>
+                <div id="origin-fields" class="field-grid coordinates origin-fields hidden">
+                  <label>Origin latitude <input id="origin-lat" type="number" step="any" disabled /></label>
+                  <label>Origin longitude <input id="origin-lon" type="number" step="any" disabled /></label>
+                </div>
+              </div>
+            </div>
+          </details>
         </section>
       </aside>
     </main>
-
-    <aside id="placement-drawer" class="placement-drawer">
-      <button id="placement-toggle" class="drawer-tab" type="button" aria-expanded="false">
-        Placement
-      </button>
-      <div id="placement-content" class="drawer-content" inert>
-        <div class="drawer-heading">
-          <div>
-            <p class="section-kicker">Advanced</p>
-            <h2>MOOS placement</h2>
-          </div>
-          <button id="placement-close" class="icon-button" type="button" aria-label="Close placement drawer">×</button>
-        </div>
-        <p class="drawer-copy">
-          The mission origin is local XY (0,0). It is separate from the geographic center of the TIFF.
-        </p>
-
-        <label class="check-row origin-mode">
-          <input id="auto-origin" type="checkbox" checked />
-          <span>Use selection center as mission origin</span>
-          <span class="info-icon" tabindex="0" data-tip="Recommended for a new map. Turn this off when the map must match an existing mission's LatOrigin and LongOrigin.">i</span>
-        </label>
-
-        <div class="field-grid coordinates">
-          <label>Origin latitude <input id="origin-lat" type="number" step="any" disabled /></label>
-          <label>Origin longitude <input id="origin-lon" type="number" step="any" disabled /></label>
-        </div>
-
-        <h3>Exact selected bounds</h3>
-        <div class="bounds-readout">
-          <div><span>West</span><strong id="bound-west">—</strong></div>
-          <div><span>South</span><strong id="bound-south">—</strong></div>
-          <div><span>East</span><strong id="bound-east">—</strong></div>
-          <div><span>North</span><strong id="bound-north">—</strong></div>
-        </div>
-      </div>
-    </aside>
 
     <script
       src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
