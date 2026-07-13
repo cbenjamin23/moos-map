@@ -27,8 +27,12 @@ def test_health_and_static_app_load() -> None:
     assert 'id="force"' not in response.text
     assert "Build Map" in response.text
     assert "Build exact crop" not in response.text
-    assert "draggable: true" in client.get("/static/app.js").text
-    assert 'addEventListener("input", applyCornerInputs)' in client.get("/static/app.js").text
+    app_script = client.get("/static/app.js").text
+    assert "draggable: true" in app_script
+    assert 'addEventListener("input", applyCornerInputs)' in app_script
+    assert "const MIT_SAILING_PAVILION = [42.358436, -71.087448];" in app_script
+    assert "const INITIAL_MAP_ZOOM = 17;" in app_script
+    assert ".setView(MIT_SAILING_PAVILION, INITIAL_MAP_ZOOM);" in app_script
     assert client.get("/static/app.js").headers["cache-control"] == "no-store, max-age=0"
     assert "placement-drawer" not in response.text
 
