@@ -80,6 +80,8 @@ def _request_from_args(args: argparse.Namespace) -> MapRequest:
         output_dir=getattr(args, "output_dir", Path.home() / "moos-maps"),
         emit_moos=getattr(args, "emit_moos", False),
         force=getattr(args, "force", False),
+        overwrite=getattr(args, "overwrite", False),
+        refresh_tiles=getattr(args, "refresh_tiles", False),
         custom_url_template=args.url_template,
         accept_custom_source_terms=args.accept_source_terms,
         mbtiles_path=args.mbtiles,
@@ -176,7 +178,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--emit-moos", action="store_true", help="Write an optional .moos snippet"
     )
     build_command.add_argument(
-        "--force", action="store_true", help="Replace outputs and refetch tiles"
+        "--overwrite",
+        action="store_true",
+        help="Replace existing output files with the same map name",
+    )
+    build_command.add_argument(
+        "--refresh-tiles",
+        action="store_true",
+        help="Redownload source tiles instead of reusing the local cache",
+    )
+    build_command.add_argument(
+        "--force",
+        action="store_true",
+        help=argparse.SUPPRESS,
     )
     _add_machine_output(build_command)
 
@@ -198,6 +212,7 @@ def run(args: argparse.Namespace) -> int:
         if args.json:
             _json_print({"sources": sources})
         else:
+            print("Sources:")
             for source in sources:
                 capability = "export" if source["export_allowed"] else "preview only"
                 print(
