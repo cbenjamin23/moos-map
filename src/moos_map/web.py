@@ -37,7 +37,7 @@ class OriginPayload(BaseModel):
 class MapPayload(BaseModel):
     bounds: BoundsPayload
     origin: OriginPayload
-    zoom: int = Field(default=20, ge=0, le=30)
+    zoom: int = Field(default=17, ge=0, le=30)
     source_id: str = "google-satellite"
     name: str = "moos_map"
     output_dir: str = "~/moos-maps"

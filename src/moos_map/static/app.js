@@ -25,7 +25,8 @@
   L.control.scale({ imperial: false }).addTo(map);
 
   function number(id) {
-    return Number($(id).value);
+    const value = $(id).value.trim();
+    return value === "" ? Number.NaN : Number(value);
   }
 
   function setNumber(id, value) {
@@ -109,13 +110,49 @@
     };
   }
 
-  function updateBoundsReadout() {
+  function updateCornerInputs() {
     const values = state.bounds || {};
-    for (const key of ["west", "south", "east", "north"]) {
-      $(`bound-${key}`).textContent = Number.isFinite(values[key])
-        ? values[key].toFixed(8)
-        : "—";
+    const fields = {
+      north: "corner-north",
+      west: "corner-west",
+      south: "corner-south",
+      east: "corner-east",
+    };
+    for (const [key, id] of Object.entries(fields)) {
+      $(id).value = Number.isFinite(values[key]) ? values[key].toFixed(8) : "";
     }
+    $("corner-error").hidden = true;
+    $("corner-error").textContent = "";
+  }
+
+  function applyCornerInputs() {
+    const values = {
+      north: number("corner-north"),
+      west: number("corner-west"),
+      south: number("corner-south"),
+      east: number("corner-east"),
+    };
+    if (Object.values(values).some((value) => !Number.isFinite(value))) return;
+
+    let message = "";
+    if (values.north > 85.05112878 || values.south < -85.05112878) {
+      message = "Corner latitudes must stay within the Web Mercator map limits.";
+    } else if (values.west < -180 || values.east > 180) {
+      message = "Corner longitudes must be between −180 and 180.";
+    } else if (values.north <= values.south) {
+      message = "Top-left latitude must be north of bottom-right latitude.";
+    } else if (values.west >= values.east) {
+      message = "Top-left longitude must be west of bottom-right longitude.";
+    }
+
+    if (message) {
+      $("corner-error").textContent = message;
+      $("corner-error").hidden = false;
+      return;
+    }
+
+    $("corner-error").hidden = true;
+    finalizeSelection(values, { fit: true });
   }
 
   function updateOriginFromSelection() {
@@ -148,7 +185,7 @@
       [bounds.south, bounds.west],
       [bounds.north, bounds.east],
     ]);
-    updateBoundsReadout();
+    updateCornerInputs();
     updateOriginFromSelection();
     if (fit) {
       map.fitBounds(state.selectionLayer.bounds, { padding: [35, 35], maxZoom: 21 });
@@ -163,7 +200,7 @@
     state.previousBounds = state.bounds;
     state.bounds = null;
     state.plan = null;
-    updateBoundsReadout();
+    updateCornerInputs();
     $("build-button").disabled = true;
     state.selectionStart = event.latlng;
     if (!state.selectionLayer) state.selectionLayer = createBoxOverlay();
@@ -219,7 +256,7 @@
     }
     state.selectionLayer.hide();
     state.previousBounds = null;
-    updateBoundsReadout();
+    updateCornerInputs();
     $("summary").innerHTML = emptySummary(
       "No region selected",
       "Click one corner, move the pointer, then click the opposite corner.",
@@ -287,10 +324,18 @@
   }
 
   async function api(path, options = {}) {
-    const response = await fetch(path, {
-      headers: { "Content-Type": "application/json" },
-      ...options,
-    });
+    let response;
+    try {
+      response = await fetch(path, {
+        headers: { "Content-Type": "application/json" },
+        ...options,
+      });
+    } catch (cause) {
+      throw new Error(
+        "The local MOOS Map service is not running. Relaunch it with “moos-map ui”, then retry the selection.",
+        { cause },
+      );
+    }
     const data = await response.json();
     if (!response.ok) {
       const detail = Array.isArray(data.detail)
@@ -386,7 +431,7 @@
       ${metric("Source resolution", `${plan.approximate_meters_per_pixel.toFixed(3)} m/px`, "Nominal Web Mercator ground resolution at the selected latitude and export zoom.")}
       ${metric("Ground area", `${formatMeters(plan.approximate_ground_width_m)} × ${formatMeters(plan.approximate_ground_height_m)}`, "Approximate geographic width and height of the exact selected bounds.")}
       ${metric("Viewer size", `${formatMeters(plan.pmarineviewer_width_m)} × ${formatMeters(plan.pmarineviewer_height_m)}`, "Dimensions current pMarineViewer is expected to assign to the image using its UTM corner calculation.")}
-      ${metric("Placement error", `${plan.estimated_max_requested_area_position_error_m.toFixed(1)} m max`, "Sampled difference between true MOOS UTM coordinates and pMarineViewer's current affine image placement. Cropping reduces this but does not rotate the raster into UTM.")}
+      ${metric("Display alignment", `${plan.estimated_max_requested_area_position_error_m.toFixed(1)} m max`, "Known pMarineViewer background-display limitation: sampled difference between true MOOS UTM coordinates and the viewer's affine image placement. It does not change mission navigation or local XY coordinates.")}
     </div>
     <p class="summary-bounds">W ${plan.actual_bounds.west.toFixed(8)} · S ${plan.actual_bounds.south.toFixed(8)} · E ${plan.actual_bounds.east.toFixed(8)} · N ${plan.actual_bounds.north.toFixed(8)}</p>
     ${warnings}${paths}`;
@@ -427,12 +472,6 @@
     configureSource();
   }
 
-  function setDrawer(open) {
-    $("placement-drawer").classList.toggle("open", open);
-    $("placement-toggle").setAttribute("aria-expanded", String(open));
-    $("placement-content").inert = !open;
-  }
-
   map.on("click", handleMapClick);
   map.on("mousemove", updateSelection);
   map.on("move zoom resize", positionOverlays);
@@ -458,14 +497,14 @@
   $("accept-terms").addEventListener("change", () => schedulePlan(0));
   $("map-form").addEventListener("submit", buildMap);
 
-  $("placement-toggle").addEventListener("click", () => {
-    setDrawer(!$("placement-drawer").classList.contains("open"));
-  });
-  $("placement-close").addEventListener("click", () => setDrawer(false));
+  for (const id of ["corner-north", "corner-west", "corner-south", "corner-east"]) {
+    $(id).addEventListener("change", applyCornerInputs);
+  }
   $("auto-origin").addEventListener("change", () => {
     const automatic = $("auto-origin").checked;
     $("origin-lat").disabled = automatic;
     $("origin-lon").disabled = automatic;
+    $("origin-fields").classList.toggle("hidden", automatic);
     if (automatic) updateOriginFromSelection();
     schedulePlan(0);
   });

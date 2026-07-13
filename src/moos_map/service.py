@@ -133,8 +133,9 @@ def plan_map(request: MapRequest, source: MapSource | None = None) -> MapPlan:
     )
     if viewer.requested_area_max_position_error_m > resolution:
         warnings.append(
-            "Estimated pMarineViewer placement error exceeds one pixel inside the "
-            f"requested area ({viewer.requested_area_max_position_error_m:.1f} m maximum)"
+            "Known pMarineViewer background-display alignment error exceeds one pixel "
+            f"inside the requested area ({viewer.requested_area_max_position_error_m:.1f} "
+            "m maximum); mission navigation and local XY are unaffected"
         )
     if (
         viewer.max_position_error_m > resolution

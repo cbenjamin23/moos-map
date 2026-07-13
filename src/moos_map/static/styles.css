@@ -232,51 +232,42 @@ input[type="range"] { padding: 0; accent-color: var(--green); }
 .paths li { margin-top: 6px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
 .paths code { color: var(--ink); }
 
-.placement-drawer {
-  position: fixed;
-  z-index: 1100;
-  top: 82px;
-  right: 0;
-  bottom: 0;
-  width: min(390px, calc(100vw - 52px));
-  transform: translateX(100%);
-  background: white;
-  box-shadow: var(--shadow);
-  transition: transform .22s ease;
+.advanced-section {
+  margin-top: 18px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fafcfb;
 }
 
-.placement-drawer.open { transform: translateX(0); }
-.drawer-tab {
-  position: absolute;
-  top: 112px;
-  left: -43px;
-  width: 43px;
-  padding: 13px 9px;
-  border: 1px solid #cdd7d2;
-  border-right: 0;
-  border-radius: 9px 0 0 9px;
-  color: var(--green-dark);
-  background: rgba(255, 255, 255, .97);
-  box-shadow: -7px 8px 22px rgba(19, 32, 29, .10);
-  font-size: 11px;
+.advanced-section > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 13px 14px;
+  color: #34423d;
+  font-size: 12px;
   font-weight: 800;
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
   cursor: pointer;
+  list-style: none;
 }
 
-.drawer-content { height: 100%; padding: 25px; overflow-y: auto; }
-.drawer-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
-.drawer-heading h2 { margin: 4px 0 0; font-size: 20px; }
-.icon-button { width: 31px; height: 31px; border: 0; border-radius: 7px; color: #63706b; background: #f0f3f1; font-size: 21px; cursor: pointer; }
-.drawer-copy { margin: 16px 0 20px; color: var(--muted); font-size: 12px; line-height: 1.55; }
-.origin-mode { padding: 12px; border-radius: 8px; background: var(--green-soft); }
-.drawer-content .coordinates { margin-top: 15px; }
-.drawer-content h3 { margin: 25px 0 11px; font-size: 13px; }
-.bounds-readout { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.bounds-readout div { padding: 9px; border: 1px solid var(--line); border-radius: 7px; }
-.bounds-readout span { display: block; color: var(--muted); font-size: 10px; }
-.bounds-readout strong { display: block; margin-top: 3px; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.advanced-section > summary::-webkit-details-marker { display: none; }
+.advanced-section > summary::before { content: "+"; color: var(--green); font-size: 17px; line-height: 1; }
+.advanced-section[open] > summary::before { content: "−"; }
+.advanced-section > summary span { margin-right: auto; }
+.advanced-section > summary small { color: var(--muted); font-size: 10px; font-weight: 560; }
+.advanced-content { padding: 0 14px 15px; border-top: 1px solid var(--line); }
+.advanced-copy { margin: 13px 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.corner-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.corner-grid fieldset { min-width: 0; margin: 0; padding: 11px; border: 1px solid var(--line); border-radius: 8px; background: white; }
+.corner-grid legend { padding: 0 5px; color: var(--green-dark); font-size: 10px; font-weight: 800; }
+.corner-grid .coordinates { grid-template-columns: 1fr; gap: 8px; }
+.corner-grid input { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+.inline-error { margin: 10px 0 0; color: var(--red); font-size: 11px; line-height: 1.4; }
+.origin-settings { margin-top: 13px; padding-top: 13px; border-top: 1px solid var(--line); }
+.origin-mode { padding: 10px; border-radius: 8px; background: var(--green-soft); }
+.origin-fields { margin-top: 10px; }
 
 /* Layout-critical Leaflet rules kept local so the app remains styled if the CDN stylesheet is absent. */
 .leaflet-container { position: relative; overflow: hidden; outline-offset: 1px; }
@@ -314,11 +305,11 @@ input[type="range"] { padding: 0; accent-color: var(--green); }
   .map-panel { height: 55vh; min-height: 390px; border-right: 0; border-bottom: 1px solid var(--line); }
   .control-panel { overflow: visible; }
   .tagline { display: none; }
-  .placement-drawer { top: 0; }
 }
 
 @media (max-width: 520px) {
   .field-grid, .field-grid.coordinates { grid-template-columns: 1fr; }
+  .corner-grid { grid-template-columns: 1fr; }
   .summary-metrics { grid-template-columns: 1fr; }
   .map-hint { right: 14px; max-width: none; }
 }

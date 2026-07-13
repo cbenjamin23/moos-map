@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "moos-map"
-version = "0.3.0"
+version = "0.4.0"
 description = "Build exact-crop TIFF background maps for MOOS-IvP"
 readme = "README.md"
 requires-python = ">=3.11"
