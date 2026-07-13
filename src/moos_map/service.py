@@ -49,6 +49,39 @@ def normalize_map_name(name: str) -> str:
     return value
 
 
+def prepare_bundle_directory(output_directory: Path, map_name: str) -> Path:
+    """Create and validate a writable per-map output directory."""
+
+    try:
+        output_root = output_directory.expanduser().resolve()
+        if output_root.exists() and not output_root.is_dir():
+            raise ValidationError(
+                f"Output directory is not a directory: {output_root}"
+            )
+        output_root.mkdir(parents=True, exist_ok=True)
+
+        bundle_directory = output_root / map_name
+        if bundle_directory.exists() and not bundle_directory.is_dir():
+            raise ValidationError(
+                f"Map bundle path is not a directory: {bundle_directory}"
+            )
+        bundle_directory.mkdir(exist_ok=True)
+
+        with tempfile.NamedTemporaryFile(
+            prefix=".moos-map-write-test-", dir=bundle_directory
+        ):
+            pass
+    except ValidationError:
+        raise
+    except (OSError, RuntimeError) as exc:
+        reason = exc.strerror if isinstance(exc, OSError) and exc.strerror else str(exc)
+        raise ValidationError(
+            f"Cannot create or write to output directory '{output_directory}': {reason}"
+        ) from exc
+
+    return bundle_directory
+
+
 def resolve_request_source(request: MapRequest) -> MapSource:
     return resolve_source(
         request.source_id,
@@ -124,31 +157,11 @@ def plan_map(
     height_ratio = 1.0
     mapping_error = estimate_vertical_mapping_error_for_bounds(actual_bounds)
     resolution = meters_per_pixel(center_latitude, request.zoom, source.tile_size)
-    if mapping_error > resolution:
-        warnings.append(
-            "Estimated Web Mercator-to-pMarineViewer vertical mapping error exceeds "
-            f"one pixel ({mapping_error:.2f} m)"
-        )
     viewer = estimate_pmarineviewer_placement(
         actual_bounds,
         request.origin,
         requested_bounds=request.bounds,
     )
-    if viewer.requested_area_max_position_error_m > resolution:
-        warnings.append(
-            "Known pMarineViewer background-display alignment error exceeds one pixel "
-            f"inside the requested area ({viewer.requested_area_max_position_error_m:.1f} "
-            "m maximum); mission navigation and local XY are unaffected"
-        )
-    if (
-        viewer.max_position_error_m > resolution
-        and viewer.max_position_error_m
-        > viewer.requested_area_max_position_error_m * 1.01
-    ):
-        warnings.append(
-            "Estimated pMarineViewer affine/UTM placement error exceeds one pixel "
-            f"across the full TIFF ({viewer.max_position_error_m:.1f} m maximum)"
-        )
 
     return MapPlan(
         source=source.as_dict(),
@@ -201,8 +214,7 @@ def build_map(
         )
 
     name = normalize_map_name(request.name)
-    output_dir = request.output_dir.expanduser().resolve()
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = prepare_bundle_directory(request.output_dir, name)
     tiff_path = output_dir / f"{name}.tif"
     info_path = output_dir / f"{name}.info"
     moos_path = output_dir / f"{name}.moos" if request.emit_moos else None
@@ -256,6 +268,8 @@ def build_map(
                     staged_moos,
                     tiff_name=tiff_path.name,
                     origin=request.origin,
+                    pixel_width=plan.pixel_width,
+                    pixel_height=plan.pixel_height,
                 )
 
             staged_report = verify_bundle(staged_tiff)

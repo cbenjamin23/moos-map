@@ -47,7 +47,6 @@ def local_request(tmp_path: Path, **overrides: object) -> MapRequest:
         "source_id": "google-satellite",
         "name": "harbor",
         "output_dir": tmp_path,
-        "emit_moos": True,
     }
     values.update(overrides)
     return MapRequest(**values)  # type: ignore[arg-type]
@@ -58,14 +57,18 @@ def test_build_creates_one_tile_aligned_moos_bundle(tmp_path: Path) -> None:
 
     result = build_map(local_request(tmp_path), provider=provider)
 
-    assert result.tiff_path == tmp_path / "harbor.tif"
-    assert result.info_path == tmp_path / "harbor.info"
-    assert result.moos_path == tmp_path / "harbor.moos"
-    assert not (tmp_path / "harbor.json").exists()
+    assert result.tiff_path == tmp_path / "harbor" / "harbor.tif"
+    assert result.info_path == tmp_path / "harbor" / "harbor.info"
+    assert result.moos_path == tmp_path / "harbor" / "harbor.moos"
+    assert not (tmp_path / "harbor" / "harbor.json").exists()
     assert result.verification["ok"] is True
+    assert result.verification["details"]["file_size_bytes"] == (
+        result.tiff_path.stat().st_size
+    )
     assert result.plan.pixel_width == 512
     assert result.plan.pixel_height == 512
     assert provider.downloaded_tiles == 4
+    assert "TIFF dimensions: 512 x 512 pixels" in result.moos_path.read_text()
 
     with Image.open(result.tiff_path) as image:
         assert image.format == "TIFF"
@@ -178,6 +181,16 @@ def test_build_crops_to_exact_requested_bounds(tmp_path: Path) -> None:
     assert info.bounds.south == pytest.approx(requested.south, abs=1e-10)
     assert info.bounds.east == pytest.approx(requested.east, abs=1e-10)
     assert info.bounds.north == pytest.approx(requested.north, abs=1e-10)
+
+
+def test_output_directory_is_validated_only_when_building(tmp_path: Path) -> None:
+    invalid_output = tmp_path / "not-a-directory"
+    invalid_output.write_text("file", encoding="utf-8")
+    request = local_request(tmp_path, output_dir=invalid_output)
+
+    assert plan_map(request).pixel_width == 512
+    with pytest.raises(ValidationError, match="Output directory is not a directory"):
+        build_map(request, provider=FakeProvider())
 
 
 def test_outside_origin_is_allowed_with_warning(tmp_path: Path) -> None:

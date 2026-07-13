@@ -138,7 +138,7 @@ class MapRequest:
     source_id: str = "google-satellite"
     name: str = "moos_map"
     output_dir: Path = field(default_factory=lambda: Path.home() / "moos-maps")
-    emit_moos: bool = False
+    emit_moos: bool = True
     force: bool = False
     overwrite: bool = True
     refresh_tiles: bool = False
@@ -191,6 +191,12 @@ class MapPlan:
     def pixel_count(self) -> int:
         return self.pixel_width * self.pixel_height
 
+    @property
+    def estimated_tiff_size_bytes(self) -> int:
+        """Return a simple pre-build RGB estimate for the output TIFF size."""
+
+        return self.pixel_count * 3
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "source": self.source,
@@ -204,6 +210,7 @@ class MapPlan:
             "pixel_width": self.pixel_width,
             "pixel_height": self.pixel_height,
             "pixel_count": self.pixel_count,
+            "estimated_tiff_size_bytes": self.estimated_tiff_size_bytes,
             "approximate_meters_per_pixel": self.approximate_meters_per_pixel,
             "approximate_ground_width_m": self.approximate_ground_width_m,
             "approximate_ground_height_m": self.approximate_ground_height_m,
