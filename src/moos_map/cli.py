@@ -31,7 +31,10 @@ def _add_map_arguments(parser: argparse.ArgumentParser) -> None:
         type=float,
         metavar=("WEST", "SOUTH", "EAST", "NORTH"),
         required=True,
-        help="Requested WGS84 bounds",
+        help=(
+            "Two opposite WGS84 corners expressed as west south east north "
+            "(bottom-left longitude/latitude, then top-right longitude/latitude)"
+        ),
     )
     parser.add_argument(
         "--origin",
@@ -46,8 +49,8 @@ def _add_map_arguments(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--source",
-        default="google-satellite",
-        help="Built-in source ID (default: google-satellite)",
+        default="esri-world-imagery",
+        help="Built-in source ID (default: esri-world-imagery)",
     )
     source_group = parser.add_mutually_exclusive_group()
     source_group.add_argument(
@@ -222,9 +225,15 @@ def build_parser() -> argparse.ArgumentParser:
     _add_machine_output(verify_parser)
 
     ui_parser = subparsers.add_parser("ui", help="Launch the local browser UI")
-    ui_parser.add_argument("--host", default="127.0.0.1")
-    ui_parser.add_argument("--port", type=int, default=8765)
-    ui_parser.add_argument("--no-browser", action="store_true")
+    ui_parser.add_argument(
+        "--host", default="127.0.0.1", help="Local bind address (default: 127.0.0.1)"
+    )
+    ui_parser.add_argument("--port", type=int, default=8765, help="Port (default: 8765)")
+    ui_parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="Start the server without opening a browser window",
+    )
 
     return parser
 
