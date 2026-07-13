@@ -81,7 +81,7 @@
                 <p class="section-kicker">02</p>
                 <h2>
                   Output
-                  <span class="info-icon" tabindex="0" data-tip="A build always writes a same-basename lowercase .tif and .info pair. The .moos snippet is optional.">i</span>
+                <span class="info-icon" tabindex="0" data-tip="Each map is stored in its own map-name folder with matching .tif, .info, and default .moos mission-snippet files.">i</span>
                 </h2>
               </div>
             </div>
@@ -93,15 +93,16 @@
               </label>
               <label>
                 Output directory
-                <input id="output-dir" value="~/moos-maps" required />
+                <span class="info-icon" tabindex="0" data-tip="This is the parent map-library directory. A map named harbor is written to ~/moos-maps/harbor/. The directory is checked only when you build.">i</span>
+                <input id="output-dir" value="~/moos-maps" />
               </label>
             </div>
 
             <div class="checks">
               <label class="check-row">
-                <input id="emit-moos" type="checkbox" />
-                <span>Write optional .moos snippet</span>
-                <span class="info-icon" tabindex="0" data-tip="The optional .moos file is a copy-ready configuration snippet containing LatOrigin, LongOrigin, and tiff_file. pMarineViewer only requires the .tif and .info files.">i</span>
+                <input id="emit-moos" type="checkbox" checked />
+                <span>Include .moos mission snippet</span>
+                <span class="info-icon" tabindex="0" data-tip="Included by default: a copy-ready snippet containing LatOrigin, LongOrigin, and tiff_file. Uncheck this when you only want the .tif and .info pair.">i</span>
               </label>
               <label class="check-row">
                 <input id="refresh-tiles" type="checkbox" />
@@ -111,7 +112,7 @@
             </div>
 
             <button id="build-button" type="submit" class="primary-button" disabled>
-              Build exact crop
+              Build Map
             </button>
           </section>
         </form>
