@@ -76,7 +76,7 @@ class VerifyPayload(BaseModel):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="MOOS Map", version=__version__, docs_url="/api/docs")
+    app = FastAPI(title="MOOS Map Builder", version=__version__, docs_url="/api/docs")
 
     @app.middleware("http")
     async def prevent_stale_local_ui(request: Request, call_next: Any) -> Response:

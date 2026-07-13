@@ -13,7 +13,7 @@ def test_health_and_static_app_load() -> None:
     response = client.get("/")
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store, max-age=0"
-    assert "MOOS Map" in response.text
+    assert "MOOS Map Builder" in response.text
     assert 'id="zoom" type="range" min="0" max="22" value="17"' in response.text
     assert "Advanced placement" in response.text
     assert '<span class="section-kicker">04</span>' in response.text
