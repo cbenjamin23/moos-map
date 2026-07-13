@@ -6,6 +6,18 @@ from moos_map.errors import ValidationError
 from moos_map.sources import resolve_source
 
 
+def test_high_detail_ray_and_anaxi_sources_are_built_in() -> None:
+    google = resolve_source("google-satellite")
+    hybrid = resolve_source("google-hybrid")
+    esri = resolve_source("esri-world-imagery")
+
+    assert google.max_zoom == 22
+    assert hybrid.max_zoom == 22
+    assert esri.max_zoom == 21
+    assert google.export_allowed is True
+    assert esri.export_allowed is True
+
+
 def test_custom_xyz_requires_all_placeholders() -> None:
     with pytest.raises(ValidationError, match="must contain"):
         resolve_source("custom", custom_url_template="https://example/{z}/{x}.png")

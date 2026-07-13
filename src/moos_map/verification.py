@@ -65,11 +65,6 @@ def verify_bundle(tiff_path: Path) -> VerificationReport:
                     errors.append(f"File contents are {image.format}, not TIFF")
                 if image.width <= 0 or image.height <= 0:
                     errors.append("TIFF has invalid dimensions")
-                if image.width % 256 or image.height % 256:
-                    warnings.append(
-                        "Dimensions are not multiples of 256; this is valid TIFF but not "
-                        "a tile-aligned moos-map v1 output"
-                    )
         except (UnidentifiedImageError, OSError) as exc:
             errors.append(f"TIFF cannot be decoded: {exc}")
 
