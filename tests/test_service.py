@@ -42,7 +42,7 @@ def local_request(tmp_path: Path, **overrides: object) -> MapRequest:
         "bounds": tile_bounds,
         "origin": Origin(latitude=42.36, longitude=-71.087),
         "zoom": 16,
-        "source_id": "usgs-imagery",
+        "source_id": "google-satellite",
         "name": "harbor",
         "output_dir": tmp_path,
         "emit_moos": True,

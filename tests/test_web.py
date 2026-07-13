@@ -27,7 +27,7 @@ def test_plan_api_uses_shared_core() -> None:
             },
             "origin": {"latitude": 42.3585, "longitude": -71.0875},
             "zoom": 16,
-            "source_id": "usgs-imagery",
+            "source_id": "google-satellite",
         },
     )
 

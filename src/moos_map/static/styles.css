@@ -60,7 +60,9 @@ button, input, select { font: inherit; }
   background: #dce8e3;
 }
 
-#map { width: 100%; height: 100%; cursor: crosshair; }
+#map { width: 100%; height: 100%; cursor: grab; }
+#map:active { cursor: grabbing; }
+#map.selecting, #map.selecting:active { cursor: crosshair; }
 
 .map-hint {
   position: absolute;
