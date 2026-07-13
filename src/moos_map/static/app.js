@@ -511,7 +511,7 @@
     options.push('<option value="mbtiles">Local MBTiles archive</option>');
     options.push('<option value="custom">Custom XYZ source</option>');
     $("source").innerHTML = options.join("");
-    $("source").value = "google-satellite";
+    $("source").value = "esri-world-imagery";
     configureSource();
   }
 

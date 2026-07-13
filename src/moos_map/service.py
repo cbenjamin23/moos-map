@@ -268,8 +268,6 @@ def build_map(
                     staged_moos,
                     tiff_name=tiff_path.name,
                     origin=request.origin,
-                    pixel_width=plan.pixel_width,
-                    pixel_height=plan.pixel_height,
                 )
 
             staged_report = verify_bundle(staged_tiff)

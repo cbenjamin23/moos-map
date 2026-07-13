@@ -135,7 +135,7 @@ class MapRequest:
     bounds: Bounds
     origin: Origin
     zoom: int = 17
-    source_id: str = "google-satellite"
+    source_id: str = "esri-world-imagery"
     name: str = "moos_map"
     output_dir: Path = field(default_factory=lambda: Path.home() / "moos-maps")
     emit_moos: bool = True

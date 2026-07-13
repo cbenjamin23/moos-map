@@ -67,8 +67,6 @@ def test_moos_snippet_contains_copy_ready_mission_settings(tmp_path: Path) -> No
         path,
         tiff_name="harbor.tif",
         origin=Origin(latitude=42.3585, longitude=-71.0875),
-        pixel_width=2048,
-        pixel_height=1024,
     )
 
     content = path.read_text(encoding="utf-8")
@@ -76,5 +74,3 @@ def test_moos_snippet_contains_copy_ready_mission_settings(tmp_path: Path) -> No
     assert "LongOrigin = -71.0875000000" in content
     assert "tiff_file = harbor.tif" in content
     assert "IVP_IMAGE_DIRS" in content
-    assert "TIFF dimensions: 2048 x 1024 pixels" in content
-    assert "pMarineViewer zoom/pan are pixel-based" in content

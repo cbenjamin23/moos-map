@@ -24,6 +24,7 @@ def test_build_includes_moos_snippet_by_default() -> None:
     args = build_parser().parse_args(build_args())
 
     assert args.emit_moos is True
+    assert args.source == "esri-world-imagery"
 
 
 def test_build_can_omit_moos_snippet() -> None:
