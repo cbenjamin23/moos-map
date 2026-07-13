@@ -38,7 +38,7 @@ class MapPayload(BaseModel):
     bounds: BoundsPayload
     origin: OriginPayload
     zoom: int = Field(default=17, ge=0, le=30)
-    source_id: str = "google-satellite"
+    source_id: str = "esri-world-imagery"
     name: str = "moos_map"
     output_dir: str = "~/moos-maps"
     emit_moos: bool = True
