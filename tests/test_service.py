@@ -18,9 +18,11 @@ class FakeProvider:
         self.cache_hits = 0
         self.downloaded_tiles = 0
         self.closed = False
+        self.force_values: list[bool] = []
 
     def fetch(self, zoom: int, x: int, y: int, *, force: bool = False) -> bytes:
-        del zoom, force
+        del zoom
+        self.force_values.append(force)
         self.downloaded_tiles += 1
         colors = {
             (19826, 24239): (255, 0, 0),
@@ -113,6 +115,26 @@ def test_failed_force_build_preserves_existing_bundle(
 
     assert original.tiff_path.read_bytes() == original_tiff
     assert original.info_path.read_bytes() == original_info
+
+
+def test_overwrite_and_tile_refresh_are_independent(tmp_path: Path) -> None:
+    build_map(local_request(tmp_path), provider=FakeProvider())
+
+    overwrite_provider = FakeProvider()
+    build_map(
+        local_request(tmp_path, overwrite=True),
+        provider=overwrite_provider,
+    )
+    assert overwrite_provider.force_values
+    assert not any(overwrite_provider.force_values)
+
+    refresh_provider = FakeProvider()
+    build_map(
+        local_request(tmp_path, name="fresh_tiles", refresh_tiles=True),
+        provider=refresh_provider,
+    )
+    assert refresh_provider.force_values
+    assert all(refresh_provider.force_values)
 
 
 def test_preview_only_source_cannot_build(tmp_path: Path) -> None:

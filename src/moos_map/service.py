@@ -58,7 +58,10 @@ def resolve_request_source(request: MapRequest) -> MapSource:
     )
 
 
-def plan_map(request: MapRequest, source: MapSource | None = None) -> MapPlan:
+def plan_map(
+    request: MapRequest,
+    source: MapSource | None = None,
+) -> MapPlan:
     source = source or resolve_request_source(request)
     if request.max_tiles < 1:
         raise ValidationError("Maximum tile count must be at least one")
@@ -78,7 +81,6 @@ def plan_map(request: MapRequest, source: MapSource | None = None) -> MapPlan:
             f"Source '{source.id}' supports zoom {source.min_zoom} through "
             f"{source.max_zoom}, not {request.zoom}"
         )
-
     tiles = tile_range_for_bounds(request.bounds, request.zoom)
     download_bounds = bounds_for_tile_range(tiles)
     actual_bounds = request.bounds
@@ -110,7 +112,8 @@ def plan_map(request: MapRequest, source: MapSource | None = None) -> MapPlan:
         )
     if tiles.count > request.max_tiles:
         warnings.append(
-            f"Plan uses {tiles.count} tiles, above the configured limit of {request.max_tiles}"
+            f"Plan uses {tiles.count} tiles, above the configured limit of "
+            f"{request.max_tiles}"
         )
     if pixel_width * pixel_height > request.max_pixels:
         warnings.append(
@@ -205,9 +208,9 @@ def build_map(
     moos_path = output_dir / f"{name}.moos" if request.emit_moos else None
     targets = [tiff_path, info_path] + ([moos_path] if moos_path else [])
     existing = [path for path in targets if path and path.exists()]
-    if existing and not request.force:
+    if existing and not request.overwrite_outputs:
         raise ValidationError(
-            "Output already exists; use --force to replace it: "
+            "Output already exists; enable overwrite or use --overwrite to replace it: "
             + ", ".join(str(path) for path in existing)
         )
 
@@ -217,7 +220,7 @@ def build_map(
         tile_data = fetch_tile_range(
             active_provider,
             plan.tiles,
-            force=request.force,
+            force=request.refresh_source_tiles,
             progress=progress,
         )
         with tempfile.TemporaryDirectory(
