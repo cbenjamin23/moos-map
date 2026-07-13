@@ -19,17 +19,24 @@ def test_health_and_static_app_load() -> None:
     assert 'id="overlay"' not in response.text
     assert '<details id="source-details" class="compact-details">' in response.text
     assert "Highest-detail satellite option from Anaxi" not in response.text
-    assert 'id="overwrite"' in response.text
+    assert 'id="overwrite"' not in response.text
     assert 'id="refresh-tiles"' in response.text
     assert 'id="force"' not in response.text
+    assert "draggable: true" in client.get("/static/app.js").text
     assert "placement-drawer" not in response.text
 
 
-def test_sources_api_lists_noaa_without_extra_layer_catalogs() -> None:
+def test_sources_api_lists_only_the_curated_source_set() -> None:
     payload = client.get("/api/sources").json()
 
     assert set(payload) == {"sources"}
-    assert "noaa-chart-display" in {source["id"] for source in payload["sources"]}
+    assert {source["id"] for source in payload["sources"]} == {
+        "google-maps",
+        "google-satellite",
+        "google-hybrid",
+        "esri-world-imagery",
+        "esri-world-topo",
+    }
 
 
 def test_plan_api_defaults_to_zoom_17() -> None:

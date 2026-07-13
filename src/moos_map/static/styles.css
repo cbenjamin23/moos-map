@@ -91,17 +91,15 @@ button, input, select { font: inherit; }
 .selection-box.drawing { border-style: dashed; background: rgba(35, 187, 184, .17); }
 
 .origin-dot {
-  position: absolute;
-  z-index: 460;
-  width: 15px;
-  height: 15px;
-  margin: -7.5px 0 0 -7.5px;
-  pointer-events: none;
-  border: 3px solid white;
+  box-sizing: border-box;
+  border: 2px solid white;
   border-radius: 50%;
   background: var(--red);
   box-shadow: 0 1px 4px rgba(7, 40, 50, .45);
+  cursor: grab;
 }
+
+.origin-dot.leaflet-drag-target { cursor: grabbing; }
 
 .control-panel {
   overflow-y: auto;
@@ -256,7 +254,7 @@ input[type="range"] { padding: 0; accent-color: var(--green); }
 
 .advanced-section > summary {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 14px;
   padding: 22px clamp(22px, 3vw, 34px);
   color: var(--ink);
@@ -267,11 +265,11 @@ input[type="range"] { padding: 0; accent-color: var(--green); }
 }
 
 .advanced-section > summary::-webkit-details-marker { display: none; }
-.advanced-section > summary::after { content: "+"; color: var(--green); font-size: 19px; line-height: 1; }
+.advanced-section > summary::after { content: "+"; align-self: flex-end; margin-bottom: 2px; color: var(--green); font-size: 19px; line-height: 1; }
 .advanced-section[open] > summary::after { content: "−"; }
 .advanced-title { display: grid; gap: 3px; margin-right: auto; }
 .advanced-name { font-size: 17px; letter-spacing: -.015em; }
-.advanced-section > summary small { color: var(--muted); font-size: 10px; font-weight: 560; }
+.advanced-section > summary small { align-self: flex-end; margin-bottom: 3px; color: var(--muted); font-size: 10px; font-weight: 560; line-height: 1.2; }
 .advanced-content { padding: 0 clamp(22px, 3vw, 34px) 22px; border-top: 1px solid var(--line); }
 .advanced-copy { margin: 13px 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .corner-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }

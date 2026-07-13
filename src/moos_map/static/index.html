@@ -104,11 +104,6 @@
                 <span class="info-icon" tabindex="0" data-tip="The optional .moos file is a copy-ready configuration snippet containing LatOrigin, LongOrigin, and tiff_file. pMarineViewer only requires the .tif and .info files.">i</span>
               </label>
               <label class="check-row">
-                <input id="overwrite" type="checkbox" />
-                <span>Overwrite existing output files</span>
-                <span class="info-icon" tabindex="0" data-tip="Enable this only when a .tif, .info, or optional .moos file with this map name already exists and should be replaced. It does not redownload map imagery.">i</span>
-              </label>
-              <label class="check-row">
                 <input id="refresh-tiles" type="checkbox" />
                 <span>Redownload source imagery</span>
                 <span class="info-icon" tabindex="0" data-tip="Normally the local tile cache is reused. Enable this when the provider's imagery or chart data may have changed and you want fresh downloads. It does not control output replacement.">i</span>
@@ -150,8 +145,8 @@
             </summary>
             <div class="advanced-content">
               <p class="advanced-copy">
-                Dragging on the map fills these coordinates. You can also enter the
-                top-left and bottom-right corners directly.
+                Selecting on the map fills these coordinates. You can also enter the
+                top-left and bottom-right corners directly, or drag the red origin dot.
               </p>
 
               <div class="corner-grid">
@@ -176,7 +171,7 @@
                 <label class="check-row origin-mode">
                   <input id="auto-origin" type="checkbox" checked />
                   <span>Use map center as mission origin</span>
-                  <span class="info-icon" tabindex="0" data-tip="Leave this on for a new mission. Turn it off only when this map must match an existing mission's LatOrigin and LongOrigin; the .info datum must match those values.">i</span>
+                  <span class="info-icon" tabindex="0" data-tip="Leave this on for a new mission. Turn it off to enter an existing mission's LatOrigin and LongOrigin, or drag the red origin dot on the map to set them visually.">i</span>
                 </label>
                 <div id="origin-fields" class="field-grid coordinates origin-fields hidden">
                   <label>Origin latitude <input id="origin-lat" type="number" step="any" disabled /></label>

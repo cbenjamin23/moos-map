@@ -64,34 +64,42 @@
     overlay.element.style.height = `${Math.max(1, southeast.y - northwest.y)}px`;
   }
 
-  function createOriginOverlay() {
-    const element = document.createElement("div");
-    element.className = "origin-dot";
-    element.title = "MOOS mission origin";
-    element.hidden = true;
-    map.getContainer().appendChild(element);
-    return {
-      element,
-      point: null,
-      setLatLng(point) {
-        this.point = L.latLng(point);
-        this.element.hidden = false;
-        positionOriginOverlay(this);
-      },
-      hide() { this.element.hidden = true; },
-    };
+  function setOriginMode(automatic) {
+    $("auto-origin").checked = automatic;
+    $("origin-lat").disabled = automatic;
+    $("origin-lon").disabled = automatic;
+    $("origin-fields").classList.toggle("hidden", automatic);
   }
 
-  function positionOriginOverlay(overlay) {
-    if (!overlay || !overlay.point || overlay.element.hidden) return;
-    const point = map.latLngToContainerPoint(overlay.point);
-    overlay.element.style.left = `${point.x}px`;
-    overlay.element.style.top = `${point.y}px`;
+  function updateOriginFromMarker(event, { replan = false } = {}) {
+    const point = event.target.getLatLng();
+    setOriginMode(false);
+    setNumber("origin-lat", point.lat);
+    setNumber("origin-lon", point.lng);
+    if (replan) schedulePlan(0);
+  }
+
+  function createOriginMarker() {
+    const marker = L.marker([0, 0], {
+      autoPan: true,
+      bubblingMouseEvents: false,
+      draggable: true,
+      keyboard: true,
+      title: "Drag to set the MOOS mission origin",
+      icon: L.divIcon({
+        className: "origin-dot",
+        iconAnchor: [5, 5],
+        iconSize: [10, 10],
+      }),
+    });
+    marker.on("dragstart", (event) => updateOriginFromMarker(event));
+    marker.on("drag", (event) => updateOriginFromMarker(event));
+    marker.on("dragend", (event) => updateOriginFromMarker(event, { replan: true }));
+    return marker;
   }
 
   function positionOverlays() {
     positionBoxOverlay(state.selectionLayer);
-    positionOriginOverlay(state.originMarker);
   }
 
   function leafletBoundsToObject(bounds) {
@@ -169,10 +177,13 @@
     const latitude = number("origin-lat");
     const longitude = number("origin-lon");
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-      if (state.originMarker) state.originMarker.hide();
+      if (state.originMarker && map.hasLayer(state.originMarker)) {
+        state.originMarker.remove();
+      }
       return;
     }
-    if (!state.originMarker) state.originMarker = createOriginOverlay();
+    if (!state.originMarker) state.originMarker = createOriginMarker();
+    if (!map.hasLayer(state.originMarker)) state.originMarker.addTo(map);
     state.originMarker.setLatLng([latitude, longitude]);
   }
 
@@ -206,7 +217,9 @@
     if (!state.selectionLayer) state.selectionLayer = createBoxOverlay();
     state.selectionLayer.hide();
     state.selectionLayer.element.classList.add("drawing");
-    if (state.originMarker) state.originMarker.hide();
+    if (state.originMarker && map.hasLayer(state.originMarker)) {
+      state.originMarker.remove();
+    }
     $("summary").innerHTML = emptySummary(
       "Choosing region…",
       "Move the pointer, then click the opposite corner.",
@@ -325,7 +338,6 @@
       name: $("name").value,
       output_dir: $("output-dir").value,
       emit_moos: $("emit-moos").checked,
-      overwrite: $("overwrite").checked,
       refresh_tiles: $("refresh-tiles").checked,
       custom_url_template: $("source").value === "custom" ? $("url-template").value : null,
       accept_custom_source_terms: $("accept-terms").checked,
@@ -520,9 +532,7 @@
   }
   $("auto-origin").addEventListener("change", () => {
     const automatic = $("auto-origin").checked;
-    $("origin-lat").disabled = automatic;
-    $("origin-lon").disabled = automatic;
-    $("origin-fields").classList.toggle("hidden", automatic);
+    setOriginMode(automatic);
     if (automatic) updateOriginFromSelection();
     schedulePlan(0);
   });
