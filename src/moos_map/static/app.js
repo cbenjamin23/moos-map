@@ -16,12 +16,15 @@
     planSequence: 0,
   };
 
+  const MIT_SAILING_PAVILION = [42.358436, -71.087448];
+  const INITIAL_MAP_ZOOM = 17;
+
   const map = L.map("map", {
     zoomControl: true,
     dragging: true,
     boxZoom: false,
     doubleClickZoom: false,
-  }).setView([42.36, -71.087], 18);
+  }).setView(MIT_SAILING_PAVILION, INITIAL_MAP_ZOOM);
   L.control.scale({ imperial: false }).addTo(map);
 
   function number(id) {
