@@ -38,7 +38,9 @@ move the pointer, and click the opposite corner to finish the region. A new
 first click immediately starts replacing the prior selection. Click-hold-drag
 pans the map; the wheel and map controls zoom it. Source, zoom, and selection
 changes update the summary automatically; there is no separate plan step.
-Advanced MOOS origin controls live in the persistent Placement drawer.
+The collapsed Advanced placement section below Summary exposes editable map
+corners and an optional existing-mission origin override. Export zoom defaults
+to 17 in both the UI and CLI; it remains adjustable up to each source's limit.
 
 ## CLI
 
@@ -54,7 +56,7 @@ Inspect a plan without downloading:
 moos-map plan \
   --bounds -71.088 42.358 -71.087 42.359 \
   --origin 42.3585 -71.0875 \
-  --zoom 20 \
+  --zoom 17 \
   --source google-satellite
 ```
 
@@ -64,7 +66,7 @@ Build it:
 moos-map build \
   --bounds -71.088 42.358 -71.087 42.359 \
   --origin 42.3585 -71.0875 \
-  --zoom 20 \
+  --zoom 17 \
   --source google-satellite \
   --name harbor \
   --output-dir ~/moos-maps \
@@ -91,7 +93,10 @@ records the UI-selected or CLI-requested bounds exactly.
 The summary estimates the residual placement error caused by pMarineViewer's
 affine raster mapping. Current `BackImg` derives an unrotated rectangle from
 diagonal UTM corner differences; exact cropping reduces the affected area but
-does not rotate imagery into the UTM grid.
+does not rotate imagery into the UTM grid. This affects only visual background
+alignment, not MOOS navigation or local XY calculations. It is deferred until
+the late compatibility phase but remains required before a precision-grade
+release.
 
 ## Mission origin versus image center
 
