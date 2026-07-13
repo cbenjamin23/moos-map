@@ -268,13 +268,26 @@
     if (state.previewLayer) state.previewLayer.remove();
     state.previewLayer = null;
     if (!source || !source.url_template) return;
-    state.previewLayer = L.tileLayer(source.url_template, {
+    const url = source.url_template.replace("{source_z}", "{z}");
+    state.previewLayer = L.tileLayer(url, {
       minZoom: source.min_zoom,
       maxZoom: 24,
       maxNativeZoom: source.max_zoom,
+      zoomOffset: source.url_zoom_offset || 0,
       attribution: source.attribution,
     }).addTo(map);
     state.previewLayer.bringToBack();
+  }
+
+  function configureZoomRange() {
+    const source = selectedSource();
+    const minZoom = source ? source.min_zoom : 0;
+    const maxZoom = source ? source.max_zoom : 30;
+    $("zoom").min = String(minZoom);
+    $("zoom").max = String(maxZoom);
+    if (number("zoom") < minZoom) $("zoom").value = String(minZoom);
+    if (number("zoom") > maxZoom) $("zoom").value = String(maxZoom);
+    $("zoom-value").value = $("zoom").value;
   }
 
   function configureSource() {
@@ -285,21 +298,17 @@
     $("url-template").required = id === "custom";
     $("mbtiles-path").required = id === "mbtiles";
 
-    const maxZoom = source ? source.max_zoom : 30;
-    $("zoom").max = String(maxZoom);
-    if (number("zoom") > maxZoom) $("zoom").value = String(maxZoom);
-    $("zoom-value").value = $("zoom").value;
-
     if (source) {
-      $("source-note").textContent = `${source.coverage}. Native zoom ${source.min_zoom}–${source.max_zoom}. ${source.note}`;
+      $("source-note").innerHTML = layerDetailsHtml(source);
       setPreview(source);
     } else if (id === "custom") {
-      $("source-note").textContent = "Enter an XYZ tile URL and confirm export access.";
+      $("source-note").innerHTML = '<p class="detail-description">Enter an XYZ tile URL and confirm that it may be exported.</p>';
       setPreview(null);
     } else {
-      $("source-note").textContent = "Build from a local MBTiles archive. Browser preview is not shown.";
+      $("source-note").innerHTML = '<p class="detail-description">Build from a local MBTiles archive. Browser preview is not shown.</p>';
       setPreview(null);
     }
+    configureZoomRange();
     schedulePlan();
   }
 
@@ -316,7 +325,8 @@
       name: $("name").value,
       output_dir: $("output-dir").value,
       emit_moos: $("emit-moos").checked,
-      force: $("force").checked,
+      overwrite: $("overwrite").checked,
+      refresh_tiles: $("refresh-tiles").checked,
       custom_url_template: $("source").value === "custom" ? $("url-template").value : null,
       accept_custom_source_terms: $("accept-terms").checked,
       mbtiles_path: $("source").value === "mbtiles" ? $("mbtiles-path").value : null,
@@ -427,7 +437,7 @@
     </ul>` : "";
     return `${success}<div class="summary-metrics">
       ${metric("Exact TIFF crop", `${plan.pixel_width.toLocaleString()} × ${plan.pixel_height.toLocaleString()} px`, "The TIFF is resampled to the exact selected bounds; extra source-tile margins are discarded.")}
-      ${metric("Source tiles", `${plan.tiles.count} (${plan.tiles.columns} × ${plan.tiles.rows})`, "These tiles are downloaded to cover the selection before exact cropping. They are cached for reuse.")}
+      ${metric("Source tiles", `${plan.tiles.count} (${plan.tiles.columns} × ${plan.tiles.rows})`, "The complete source tiles intersecting the selection are downloaded, then cropped to the exact selected bounds. Tiles are cached for reuse.")}
       ${metric("Source resolution", `${plan.approximate_meters_per_pixel.toFixed(3)} m/px`, "Nominal Web Mercator ground resolution at the selected latitude and export zoom.")}
       ${metric("Ground area", `${formatMeters(plan.approximate_ground_width_m)} × ${formatMeters(plan.approximate_ground_height_m)}`, "Approximate geographic width and height of the exact selected bounds.")}
       ${metric("Viewer size", `${formatMeters(plan.pmarineviewer_width_m)} × ${formatMeters(plan.pmarineviewer_height_m)}`, "Dimensions current pMarineViewer is expected to assign to the image using its UTM corner calculation.")}
@@ -439,6 +449,14 @@
 
   function metric(label, value, tip) {
     return `<div class="metric"><span>${label}<span class="info-icon" tabindex="0" data-tip="${escapeHtml(tip)}">i</span></span><strong>${value}</strong></div>`;
+  }
+
+  function layerDetailsHtml(layer) {
+    return `<dl class="detail-list">
+      <div><dt>Coverage</dt><dd>${escapeHtml(layer.coverage)}</dd></div>
+      <div><dt>Zoom</dt><dd>${layer.min_zoom}–${layer.max_zoom}</dd></div>
+      <div><dt>Attribution</dt><dd>${escapeHtml(layer.attribution)}</dd></div>
+    </dl><p class="detail-description">${escapeHtml(layer.note)}</p>`;
   }
 
   function emptySummary(title, description) {

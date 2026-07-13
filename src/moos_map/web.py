@@ -43,6 +43,8 @@ class MapPayload(BaseModel):
     output_dir: str = "~/moos-maps"
     emit_moos: bool = False
     force: bool = False
+    overwrite: bool = False
+    refresh_tiles: bool = False
     custom_url_template: str | None = None
     accept_custom_source_terms: bool = False
     mbtiles_path: str | None = None
@@ -59,6 +61,8 @@ class MapPayload(BaseModel):
             output_dir=Path(self.output_dir),
             emit_moos=self.emit_moos,
             force=self.force,
+            overwrite=self.overwrite,
+            refresh_tiles=self.refresh_tiles,
             custom_url_template=self.custom_url_template or None,
             accept_custom_source_terms=self.accept_custom_source_terms,
             mbtiles_path=Path(self.mbtiles_path) if self.mbtiles_path else None,

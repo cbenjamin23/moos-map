@@ -26,6 +26,18 @@ def test_high_detail_ray_and_anaxi_sources_are_built_in() -> None:
     assert "usgs-imagery" not in BUILTIN_SOURCES
     assert "usgs-topo" not in BUILTIN_SOURCES
     assert "osm-preview" not in BUILTIN_SOURCES
+    assert all(
+        "Anaxi" not in source.note and "Ray" not in source.note
+        for source in BUILTIN_SOURCES.values()
+    )
+
+
+def test_noaa_chart_source_adapts_its_shifted_tile_zoom() -> None:
+    noaa = resolve_source("noaa-chart-display")
+
+    assert noaa.max_zoom == 16
+    assert noaa.url_zoom_offset == -2
+    assert noaa.tile_url(16, 19835, 24242).endswith("/tile/14/24242/19835")
 
 
 def test_custom_xyz_requires_all_placeholders() -> None:

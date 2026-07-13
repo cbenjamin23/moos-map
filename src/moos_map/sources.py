@@ -23,11 +23,13 @@ class MapSource:
     coverage: str
     note: str = ""
     mbtiles_path: Path | None = None
+    url_zoom_offset: int = 0
 
     def tile_url(self, zoom: int, x: int, y: int) -> str:
         if self.kind != "xyz" or not self.url_template:
             raise ValidationError(f"Source {self.id} does not provide XYZ URLs")
-        return self.url_template.format(z=zoom, x=x, y=y)
+        source_zoom = zoom + self.url_zoom_offset
+        return self.url_template.format(z=zoom, source_z=source_zoom, x=x, y=y)
 
     def as_dict(self) -> dict[str, Any]:
         result = asdict(self)
@@ -48,8 +50,8 @@ BUILTIN_SOURCES: dict[str, MapSource] = {
         export_allowed=True,
         attribution="Google",
         terms_url="https://www.google.com/help/terms_maps/",
-        coverage="Global; maximum native detail varies by location",
-        note="High-detail street map from Anaxi; confirmed through zoom 22 at MIT.",
+        coverage="Global",
+        note="Street map with roads, places, and local features. Native detail varies by location.",
     ),
     "google-satellite": MapSource(
         id="google-satellite",
@@ -63,8 +65,8 @@ BUILTIN_SOURCES: dict[str, MapSource] = {
         export_allowed=True,
         attribution="Google",
         terms_url="https://www.google.com/help/terms_maps/",
-        coverage="Global; maximum native detail varies by location",
-        note="Highest-detail satellite option from Anaxi; confirmed through zoom 22 at MIT.",
+        coverage="Global",
+        note="High-resolution aerial and satellite imagery. Native detail varies by location.",
     ),
     "google-hybrid": MapSource(
         id="google-hybrid",
@@ -78,8 +80,8 @@ BUILTIN_SOURCES: dict[str, MapSource] = {
         export_allowed=True,
         attribution="Google",
         terms_url="https://www.google.com/help/terms_maps/",
-        coverage="Global; maximum native detail varies by location",
-        note="Satellite imagery with road and place labels, matching Anaxi's hybrid source.",
+        coverage="Global",
+        note="Satellite imagery with roads and place labels.",
     ),
     "google-terrain-hybrid": MapSource(
         id="google-terrain-hybrid",
@@ -93,8 +95,8 @@ BUILTIN_SOURCES: dict[str, MapSource] = {
         export_allowed=True,
         attribution="Google",
         terms_url="https://www.google.com/help/terms_maps/",
-        coverage="Global; terrain detail varies by location and scale",
-        note="Terrain-oriented map with labels from Anaxi.",
+        coverage="Global",
+        note="Terrain-oriented map with roads and labels. Detail varies by location.",
     ),
     "esri-world-imagery": MapSource(
         id="esri-world-imagery",
@@ -111,8 +113,8 @@ BUILTIN_SOURCES: dict[str, MapSource] = {
         export_allowed=True,
         attribution="Esri, Maxar, Earthstar Geographics, and contributors",
         terms_url="https://www.esri.com/en-us/legal/terms/full-master-agreement",
-        coverage="Global; maximum native detail varies by location",
-        note="The satellite source used by Ray's prototype; confirmed through zoom 21 at MIT.",
+        coverage="Global",
+        note="High-resolution satellite and aerial imagery. Native detail varies by location.",
     ),
     "esri-world-street": MapSource(
         id="esri-world-street",
@@ -129,8 +131,8 @@ BUILTIN_SOURCES: dict[str, MapSource] = {
         export_allowed=True,
         attribution="Esri, HERE, Garmin, and contributors",
         terms_url="https://www.esri.com/en-us/legal/terms/full-master-agreement",
-        coverage="Global; maximum native detail varies by location",
-        note="Detailed Esri street map from Anaxi; useful native detail at MIT through zoom 19.",
+        coverage="Global",
+        note="Street map with roads, places, and local features. Native detail varies by location.",
     ),
     "esri-world-topo": MapSource(
         id="esri-world-topo",
@@ -147,8 +149,8 @@ BUILTIN_SOURCES: dict[str, MapSource] = {
         export_allowed=True,
         attribution="Esri and contributors",
         terms_url="https://www.esri.com/en-us/legal/terms/full-master-agreement",
-        coverage="Global; maximum native detail varies by location",
-        note="Detailed topographic source from Anaxi; useful native detail at MIT through zoom 19.",
+        coverage="Global",
+        note="Topographic map with terrain, hydrography, roads, and place labels.",
     ),
     "esri-ocean": MapSource(
         id="esri-ocean",
@@ -166,7 +168,30 @@ BUILTIN_SOURCES: dict[str, MapSource] = {
         attribution="Esri, Garmin, GEBCO, NOAA, and contributors",
         terms_url="https://www.esri.com/en-us/legal/terms/full-master-agreement",
         coverage="Global",
-        note="The bathymetry layer from Ray's prototype; native cached detail ends at zoom 16.",
+        note="Ocean basemap with bathymetry and marine geographic context.",
+    ),
+    "noaa-chart-display": MapSource(
+        id="noaa-chart-display",
+        name="NOAA Nautical Charts",
+        kind="xyz",
+        tile_size=256,
+        min_zoom=2,
+        max_zoom=16,
+        url_template=(
+            "https://gis.charttools.noaa.gov/arcgis/rest/services/"
+            "MarineChart_Services/NOAACharts/MapServer/tile/{source_z}/{y}/{x}"
+        ),
+        preview_allowed=True,
+        export_allowed=True,
+        attribution="NOAA Office of Coast Survey",
+        terms_url="https://www.nauticalcharts.noaa.gov/data/gis-data-and-services.html",
+        coverage="U.S. coastal waters and territories",
+        note=(
+            "Traditional chart portrayal derived from current NOAA ENC data. "
+            "The online cache tops out at zoom 16; regional NOAA MBTiles may contain "
+            "different zoom coverage. Not for navigation."
+        ),
+        url_zoom_offset=-2,
     ),
 }
 
