@@ -4,45 +4,57 @@
   const $ = (id) => document.getElementById(id);
   const state = {
     sources: [],
-    mode: null,
-    firstCorner: null,
-    requestedLayer: null,
-    actualLayer: null,
-    originMarker: null,
+    bounds: null,
+    plan: null,
     previewLayer: null,
-    latestPlan: null,
+    selectionLayer: null,
+    originMarker: null,
+    drawing: false,
+    drawStart: null,
+    previousBounds: null,
+    planTimer: null,
+    planSequence: 0,
   };
 
-  const defaults = {
-    west: -71.092,
-    south: 42.357,
-    east: -71.083,
-    north: 42.363,
-    originLat: 42.36,
-    originLon: -71.087,
-  };
-
-  const map = L.map("map", { zoomControl: true }).setView([42.36, -71.087], 15);
+  const map = L.map("map", {
+    zoomControl: true,
+    dragging: false,
+    boxZoom: false,
+    doubleClickZoom: false,
+  }).setView([42.36, -71.087], 18);
   L.control.scale({ imperial: false }).addTo(map);
 
-  function createBoxOverlay(kind) {
+  function number(id) {
+    return Number($(id).value);
+  }
+
+  function setNumber(id, value) {
+    $(id).value = Number(value).toFixed(10).replace(/0+$/, "").replace(/\.$/, "");
+  }
+
+  function selectedSource() {
+    return state.sources.find((source) => source.id === $("source").value);
+  }
+
+  function createBoxOverlay() {
     const element = document.createElement("div");
-    element.className = `selection-box ${kind}`;
+    element.className = "selection-box";
+    element.hidden = true;
     map.getContainer().appendChild(element);
     return {
       element,
       bounds: null,
       setBounds(bounds) {
         this.bounds = L.latLngBounds(bounds);
+        this.element.hidden = false;
         positionBoxOverlay(this);
       },
-      getBounds() { return this.bounds; },
-      remove() { this.element.remove(); },
+      hide() { this.element.hidden = true; },
     };
   }
 
   function positionBoxOverlay(overlay) {
-    if (!overlay || !overlay.bounds) return;
+    if (!overlay || !overlay.bounds || overlay.element.hidden) return;
     const northwest = map.latLngToContainerPoint(overlay.bounds.getNorthWest());
     const southeast = map.latLngToContainerPoint(overlay.bounds.getSouthEast());
     overlay.element.style.left = `${northwest.x}px`;
@@ -55,82 +67,154 @@
     const element = document.createElement("div");
     element.className = "origin-dot";
     element.title = "MOOS mission origin";
+    element.hidden = true;
     map.getContainer().appendChild(element);
     return {
       element,
       point: null,
       setLatLng(point) {
         this.point = L.latLng(point);
+        this.element.hidden = false;
         positionOriginOverlay(this);
       },
-      remove() { this.element.remove(); },
+      hide() { this.element.hidden = true; },
     };
   }
 
   function positionOriginOverlay(overlay) {
-    if (!overlay || !overlay.point) return;
+    if (!overlay || !overlay.point || overlay.element.hidden) return;
     const point = map.latLngToContainerPoint(overlay.point);
     overlay.element.style.left = `${point.x}px`;
     overlay.element.style.top = `${point.y}px`;
   }
 
-  function positionSelectionOverlays() {
-    positionBoxOverlay(state.requestedLayer);
-    positionBoxOverlay(state.actualLayer);
+  function positionOverlays() {
+    positionBoxOverlay(state.selectionLayer);
     positionOriginOverlay(state.originMarker);
   }
 
-  function number(id) {
-    return Number($(id).value);
+  function leafletBoundsToObject(bounds) {
+    return {
+      west: bounds.getWest(),
+      south: bounds.getSouth(),
+      east: bounds.getEast(),
+      north: bounds.getNorth(),
+    };
   }
 
-  function setInput(id, value) {
-    $(id).value = Number(value).toFixed(8).replace(/0+$/, "").replace(/\.$/, "");
+  function boundsCenter(bounds) {
+    return {
+      latitude: (bounds.south + bounds.north) / 2,
+      longitude: (bounds.west + bounds.east) / 2,
+    };
   }
 
-  function selectedSource() {
-    return state.sources.find((source) => source.id === $("source").value);
+  function updateBoundsReadout() {
+    const values = state.bounds || {};
+    for (const key of ["west", "south", "east", "north"]) {
+      $(`bound-${key}`).textContent = Number.isFinite(values[key])
+        ? values[key].toFixed(8)
+        : "—";
+    }
   }
 
-  function setMode(mode) {
-    state.mode = mode;
-    state.firstCorner = null;
-    $("set-origin").classList.toggle("active", mode === "origin");
-    $("draw-bounds").classList.toggle("active", mode === "bounds");
-    $("map-hint").textContent = mode === "origin"
-      ? "Click once to place the MOOS mission origin."
-      : mode === "bounds"
-        ? "Click two opposite corners of the requested area."
-        : "Choose a tool, then click the map.";
-  }
-
-  function drawRequested() {
-    const bounds = [[number("south"), number("west")], [number("north"), number("east")]];
-    if (!state.requestedLayer) state.requestedLayer = createBoxOverlay("requested");
-    state.requestedLayer.setBounds(bounds);
+  function updateOriginFromSelection() {
+    if (!state.bounds) return;
+    const center = boundsCenter(state.bounds);
+    if ($("auto-origin").checked || !Number.isFinite(number("origin-lat"))) {
+      setNumber("origin-lat", center.latitude);
+      setNumber("origin-lon", center.longitude);
+    }
+    drawOrigin();
   }
 
   function drawOrigin() {
-    const point = [number("origin-lat"), number("origin-lon")];
+    const latitude = number("origin-lat");
+    const longitude = number("origin-lon");
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      if (state.originMarker) state.originMarker.hide();
+      return;
+    }
     if (!state.originMarker) state.originMarker = createOriginOverlay();
-    state.originMarker.setLatLng(point);
+    state.originMarker.setLatLng([latitude, longitude]);
   }
 
-  function redrawInputs() {
-    const values = ["west", "south", "east", "north", "origin-lat", "origin-lon"]
-      .map((id) => number(id));
-    if (values.every(Number.isFinite)) {
-      drawRequested();
-      drawOrigin();
+  function finalizeSelection(bounds, { fit = false } = {}) {
+    state.bounds = bounds;
+    state.plan = null;
+    if (!state.selectionLayer) state.selectionLayer = createBoxOverlay();
+    state.selectionLayer.element.classList.remove("drawing");
+    state.selectionLayer.setBounds([
+      [bounds.south, bounds.west],
+      [bounds.north, bounds.east],
+    ]);
+    updateBoundsReadout();
+    updateOriginFromSelection();
+    if (fit) {
+      map.fitBounds(state.selectionLayer.bounds, { padding: [35, 35], maxZoom: 21 });
     }
+    $("map-hint").textContent = "Drag again anywhere to replace this region.";
+    schedulePlan(0);
+  }
+
+  function beginDrag(event) {
+    if (event.button !== 0 || event.target.closest(".leaflet-control")) return;
+    event.preventDefault();
+    state.drawing = true;
+    state.previousBounds = state.bounds;
+    state.bounds = null;
+    state.plan = null;
+    $("build-button").disabled = true;
+    state.drawStart = map.mouseEventToContainerPoint(event);
+    if (!state.selectionLayer) state.selectionLayer = createBoxOverlay();
+    state.selectionLayer.hide();
+    state.selectionLayer.element.classList.add("drawing");
+    if (state.originMarker) state.originMarker.hide();
+    $("summary").innerHTML = emptySummary("Drawing region…", "Release to calculate the exact crop.");
+    $("map-hint").textContent = "Release to use this region.";
+    map.getContainer().setPointerCapture(event.pointerId);
+  }
+
+  function updateDrag(event) {
+    if (!state.drawing) return;
+    const current = map.mouseEventToContainerPoint(event);
+    const startLatLng = map.containerPointToLatLng(state.drawStart);
+    const currentLatLng = map.containerPointToLatLng(current);
+    state.selectionLayer.setBounds(L.latLngBounds(startLatLng, currentLatLng));
+  }
+
+  function endDrag(event) {
+    if (!state.drawing) return;
+    state.drawing = false;
+    const current = map.mouseEventToContainerPoint(event);
+    const width = Math.abs(current.x - state.drawStart.x);
+    const height = Math.abs(current.y - state.drawStart.y);
+    state.selectionLayer.element.classList.remove("drawing");
+
+    if (width >= 8 && height >= 8) {
+      const startLatLng = map.containerPointToLatLng(state.drawStart);
+      const currentLatLng = map.containerPointToLatLng(current);
+      finalizeSelection(leafletBoundsToObject(L.latLngBounds(startLatLng, currentLatLng)));
+    } else if (state.previousBounds) {
+      finalizeSelection(state.previousBounds);
+    } else {
+      state.selectionLayer.hide();
+      $("summary").innerHTML = emptySummary(
+        "No region selected",
+        "Click and drag—not just click—to define the export crop.",
+      );
+      $("map-hint").textContent = "Click and drag anywhere on the map to select an export region.";
+    }
+    state.previousBounds = null;
   }
 
   function setPreview(source) {
     if (state.previewLayer) state.previewLayer.remove();
+    state.previewLayer = null;
     if (!source || !source.url_template) return;
     state.previewLayer = L.tileLayer(source.url_template, {
       minZoom: source.min_zoom,
-      maxZoom: 22,
+      maxZoom: 24,
       maxNativeZoom: source.max_zoom,
       attribution: source.attribution,
     }).addTo(map);
@@ -144,29 +228,33 @@
     $("mbtiles-fields").classList.toggle("hidden", id !== "mbtiles");
     $("url-template").required = id === "custom";
     $("mbtiles-path").required = id === "mbtiles";
+
     const maxZoom = source ? source.max_zoom : 30;
     $("zoom").max = String(maxZoom);
     if (number("zoom") > maxZoom) $("zoom").value = String(maxZoom);
     $("zoom-value").value = $("zoom").value;
 
     if (source) {
-      const capability = source.export_allowed ? "Static export allowed." : "Preview only; export is disabled.";
-      $("source-note").textContent = `${capability} ${source.coverage}. ${source.note}`;
+      $("source-note").textContent = `${source.coverage}. Native zoom ${source.min_zoom}–${source.max_zoom}. ${source.note}`;
       setPreview(source);
     } else if (id === "custom") {
-      $("source-note").textContent = "Custom XYZ export requires your explicit permission acknowledgement.";
+      $("source-note").textContent = "Enter an XYZ tile URL and confirm export access.";
+      setPreview(null);
     } else {
-      $("source-note").textContent = "Reads an existing local tile archive; preview is not shown on the map.";
+      $("source-note").textContent = "Build from a local MBTiles archive. Browser preview is not shown.";
+      setPreview(null);
     }
+    schedulePlan();
   }
 
-  function payload() {
+  function requestPayload() {
+    if (!state.bounds) return null;
     return {
-      bounds: {
-        west: number("west"), south: number("south"),
-        east: number("east"), north: number("north"),
+      bounds: state.bounds,
+      origin: {
+        latitude: number("origin-lat"),
+        longitude: number("origin-lon"),
       },
-      origin: { latitude: number("origin-lat"), longitude: number("origin-lon") },
       zoom: number("zoom"),
       source_id: $("source").value,
       name: $("name").value,
@@ -194,34 +282,107 @@
     return data;
   }
 
-  function drawActual(plan) {
-    const b = plan.actual_bounds;
-    if (!state.actualLayer) state.actualLayer = createBoxOverlay("actual");
-    state.actualLayer.setBounds([[b.south, b.west], [b.north, b.east]]);
+  function schedulePlan(delay = 180) {
+    clearTimeout(state.planTimer);
+    if (!state.bounds) return;
+    state.planTimer = setTimeout(refreshSummary, delay);
   }
 
-  function planHtml(plan, build = null) {
+  function sourceSetupIncomplete() {
+    return (
+      ($("source").value === "custom" && !$("url-template").value.trim())
+      || ($("source").value === "mbtiles" && !$("mbtiles-path").value.trim())
+    );
+  }
+
+  async function refreshSummary() {
+    const payload = requestPayload();
+    if (!payload) return null;
+    if (sourceSetupIncomplete()) {
+      state.plan = null;
+      $("build-button").disabled = true;
+      $("summary").innerHTML = emptySummary("Source details needed", "Complete the source fields above.");
+      return null;
+    }
+
+    const sequence = ++state.planSequence;
+    $("summary").classList.add("loading");
+    try {
+      const plan = await api("/api/plan", { method: "POST", body: JSON.stringify(payload) });
+      if (sequence !== state.planSequence) return null;
+      state.plan = plan;
+      $("summary").innerHTML = summaryHtml(plan);
+      $("build-button").disabled = !plan.source.export_allowed;
+      return plan;
+    } catch (error) {
+      if (sequence !== state.planSequence) return null;
+      state.plan = null;
+      $("build-button").disabled = true;
+      showError(error);
+      return null;
+    } finally {
+      if (sequence === state.planSequence) $("summary").classList.remove("loading");
+    }
+  }
+
+  async function buildMap(event) {
+    event.preventDefault();
+    if (!state.bounds) return;
+    const button = $("build-button");
+    button.disabled = true;
+    button.textContent = "Building exact crop…";
+    try {
+      const plan = state.plan || await refreshSummary();
+      if (!plan) return;
+      const result = await api("/api/build", {
+        method: "POST",
+        body: JSON.stringify(requestPayload()),
+      });
+      state.plan = result.plan;
+      $("summary").innerHTML = summaryHtml(result.plan, result);
+    } catch (error) {
+      showError(error);
+    } finally {
+      button.disabled = !state.plan || !state.plan.source.export_allowed;
+      button.textContent = "Build exact crop";
+    }
+  }
+
+  function summaryHtml(plan, build = null) {
     const warnings = plan.warnings.length
       ? `<ul class="warnings">${plan.warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul>`
       : "";
-    const success = build ? `<div class="success">Map built and verified successfully.</div>` : "";
+    const success = build
+      ? '<div class="success">Exact crop built and verified successfully.</div>'
+      : "";
     const paths = build ? `<ul class="paths">
       <li>TIFF: <code>${escapeHtml(build.tiff_path)}</code></li>
       <li>Info: <code>${escapeHtml(build.info_path)}</code></li>
       ${build.moos_path ? `<li>MOOS: <code>${escapeHtml(build.moos_path)}</code></li>` : ""}
       <li>${build.downloaded_tiles} downloaded, ${build.cache_hits} from cache</li>
     </ul>` : "";
-    return `${success}<h2>${build ? "Build result" : "Tile-aligned plan"}</h2>
-      <div class="metrics">
-        <div class="metric"><span>Tiles</span><strong>${plan.tiles.count} (${plan.tiles.columns} × ${plan.tiles.rows})</strong></div>
-        <div class="metric"><span>TIFF pixels</span><strong>${plan.pixel_width} × ${plan.pixel_height}</strong></div>
-        <div class="metric"><span>Viewer size</span><strong>${formatMeters(plan.pmarineviewer_width_m)} × ${formatMeters(plan.pmarineviewer_height_m)}</strong></div>
-        <div class="metric"><span>Resolution</span><strong>${plan.approximate_meters_per_pixel.toFixed(2)} m/px</strong></div>
-        <div class="metric"><span>Image center local XY</span><strong>${plan.image_center_local_x_m.toFixed(1)}, ${plan.image_center_local_y_m.toFixed(1)} m</strong></div>
-        <div class="metric"><span>Est. placement error</span><strong>${plan.estimated_max_requested_area_position_error_m.toFixed(1)} m requested / ${plan.estimated_max_pmarineviewer_position_error_m.toFixed(1)} m full</strong></div>
-        <div class="metric"><span>Width expansion</span><strong>${plan.expansion_width_ratio.toFixed(2)}×</strong></div>
-        <div class="metric"><span>Height expansion</span><strong>${plan.expansion_height_ratio.toFixed(2)}×</strong></div>
-      </div>${warnings}${paths}`;
+    return `${success}<div class="summary-metrics">
+      ${metric("Exact TIFF crop", `${plan.pixel_width.toLocaleString()} × ${plan.pixel_height.toLocaleString()} px`, "The TIFF is resampled to the exact dragged bounds; extra source-tile margins are discarded.")}
+      ${metric("Source tiles", `${plan.tiles.count} (${plan.tiles.columns} × ${plan.tiles.rows})`, "These tiles are downloaded to cover the selection before exact cropping. They are cached for reuse.")}
+      ${metric("Source resolution", `${plan.approximate_meters_per_pixel.toFixed(3)} m/px`, "Nominal Web Mercator ground resolution at the selected latitude and export zoom.")}
+      ${metric("Ground area", `${formatMeters(plan.approximate_ground_width_m)} × ${formatMeters(plan.approximate_ground_height_m)}`, "Approximate geographic width and height of the exact selected bounds.")}
+      ${metric("Viewer size", `${formatMeters(plan.pmarineviewer_width_m)} × ${formatMeters(plan.pmarineviewer_height_m)}`, "Dimensions current pMarineViewer is expected to assign to the image using its UTM corner calculation.")}
+      ${metric("Placement error", `${plan.estimated_max_requested_area_position_error_m.toFixed(1)} m max`, "Sampled difference between true MOOS UTM coordinates and pMarineViewer's current affine image placement. Cropping reduces this but does not rotate the raster into UTM.")}
+    </div>
+    <p class="summary-bounds">W ${plan.actual_bounds.west.toFixed(8)} · S ${plan.actual_bounds.south.toFixed(8)} · E ${plan.actual_bounds.east.toFixed(8)} · N ${plan.actual_bounds.north.toFixed(8)}</p>
+    ${warnings}${paths}`;
+  }
+
+  function metric(label, value, tip) {
+    return `<div class="metric"><span>${label}<span class="info-icon" tabindex="0" data-tip="${escapeHtml(tip)}">i</span></span><strong>${value}</strong></div>`;
+  }
+
+  function emptySummary(title, description) {
+    return `<div class="empty-state"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(description)}</span></div>`;
+  }
+
+  function showError(error) {
+    $("summary").innerHTML = `<div class="error"><strong>Could not continue.</strong><br>${escapeHtml(error.message)}</div>`;
   }
 
   function formatMeters(value) {
@@ -234,35 +395,6 @@
     })[character]);
   }
 
-  function showError(error) {
-    $("result").innerHTML = `<div class="error"><strong>Could not continue.</strong><br>${escapeHtml(error.message)}</div>`;
-  }
-
-  async function inspectPlan() {
-    const plan = await api("/api/plan", { method: "POST", body: JSON.stringify(payload()) });
-    state.latestPlan = plan;
-    drawActual(plan);
-    $("result").innerHTML = planHtml(plan);
-    return plan;
-  }
-
-  async function buildMap() {
-    const button = $("build-button");
-    button.disabled = true;
-    button.textContent = "Building…";
-    try {
-      const result = await api("/api/build", { method: "POST", body: JSON.stringify(payload()) });
-      state.latestPlan = result.plan;
-      drawActual(result.plan);
-      $("result").innerHTML = planHtml(result.plan, result);
-    } catch (error) {
-      showError(error);
-    } finally {
-      button.disabled = false;
-      button.textContent = "Build map";
-    }
-  }
-
   async function loadSources() {
     const data = await api("/api/sources");
     state.sources = data.sources;
@@ -270,61 +402,56 @@
       `<option value="${source.id}">${escapeHtml(source.name)}</option>`
     );
     options.push('<option value="mbtiles">Local MBTiles archive</option>');
-    options.push('<option value="custom">Custom authorized XYZ source</option>');
+    options.push('<option value="custom">Custom XYZ source</option>');
     $("source").innerHTML = options.join("");
-    $("source").value = "usgs-imagery";
+    $("source").value = "google-satellite";
     configureSource();
   }
 
-  map.on("click", (event) => {
-    if (state.mode === "origin") {
-      setInput("origin-lat", event.latlng.lat);
-      setInput("origin-lon", event.latlng.lng);
-      drawOrigin();
-      setMode(null);
-      return;
-    }
-    if (state.mode === "bounds") {
-      if (!state.firstCorner) {
-        state.firstCorner = event.latlng;
-        $("map-hint").textContent = "Now click the opposite corner.";
-        return;
-      }
-      const first = state.firstCorner;
-      setInput("west", Math.min(first.lng, event.latlng.lng));
-      setInput("east", Math.max(first.lng, event.latlng.lng));
-      setInput("south", Math.min(first.lat, event.latlng.lat));
-      setInput("north", Math.max(first.lat, event.latlng.lat));
-      drawRequested();
-      setMode(null);
-    }
-  });
-  map.on("move zoom resize", positionSelectionOverlays);
+  function setDrawer(open) {
+    $("placement-drawer").classList.toggle("open", open);
+    $("placement-toggle").setAttribute("aria-expanded", String(open));
+    $("placement-content").inert = !open;
+  }
 
-  $("set-origin").addEventListener("click", () => setMode("origin"));
-  $("draw-bounds").addEventListener("click", () => setMode("bounds"));
-  $("fit-result").addEventListener("click", () => {
-    const layer = state.actualLayer || state.requestedLayer;
-    if (layer) map.fitBounds(layer.getBounds(), { padding: [30, 30] });
-  });
+  const mapElement = map.getContainer();
+  mapElement.addEventListener("pointerdown", beginDrag);
+  mapElement.addEventListener("pointermove", updateDrag);
+  mapElement.addEventListener("pointerup", endDrag);
+  mapElement.addEventListener("pointercancel", endDrag);
+  map.on("move zoom resize", positionOverlays);
+
   $("source").addEventListener("change", configureSource);
-  $("zoom").addEventListener("input", () => { $("zoom-value").value = $("zoom").value; });
-  ["west", "south", "east", "north", "origin-lat", "origin-lon"].forEach((id) =>
-    $(id).addEventListener("change", redrawInputs)
-  );
-  $("map-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    try { await inspectPlan(); } catch (error) { showError(error); }
+  $("zoom").addEventListener("input", () => {
+    $("zoom-value").value = $("zoom").value;
+    schedulePlan();
   });
-  $("build-button").addEventListener("click", buildMap);
+  $("url-template").addEventListener("change", () => {
+    if ($("url-template").value.trim()) {
+      setPreview({
+        url_template: $("url-template").value.trim(), min_zoom: 0,
+        max_zoom: number("zoom"), attribution: "Custom source",
+      });
+    }
+    schedulePlan(0);
+  });
+  $("mbtiles-path").addEventListener("change", () => schedulePlan(0));
+  $("accept-terms").addEventListener("change", () => schedulePlan(0));
+  $("map-form").addEventListener("submit", buildMap);
 
-  setInput("west", defaults.west);
-  setInput("south", defaults.south);
-  setInput("east", defaults.east);
-  setInput("north", defaults.north);
-  setInput("origin-lat", defaults.originLat);
-  setInput("origin-lon", defaults.originLon);
-  redrawInputs();
-  map.fitBounds(state.requestedLayer.getBounds(), { padding: [45, 45] });
+  $("placement-toggle").addEventListener("click", () => {
+    setDrawer(!$("placement-drawer").classList.contains("open"));
+  });
+  $("placement-close").addEventListener("click", () => setDrawer(false));
+  $("auto-origin").addEventListener("change", () => {
+    const automatic = $("auto-origin").checked;
+    $("origin-lat").disabled = automatic;
+    $("origin-lon").disabled = automatic;
+    if (automatic) updateOriginFromSelection();
+    schedulePlan(0);
+  });
+  $("origin-lat").addEventListener("change", () => { drawOrigin(); schedulePlan(0); });
+  $("origin-lon").addEventListener("change", () => { drawOrigin(); schedulePlan(0); });
+
   loadSources().catch(showError);
 })();

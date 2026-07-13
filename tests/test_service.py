@@ -116,10 +116,39 @@ def test_failed_force_build_preserves_existing_bundle(
 
 
 def test_preview_only_source_cannot_build(tmp_path: Path) -> None:
-    request = local_request(tmp_path, source_id="osm-preview")
+    request = local_request(
+        tmp_path,
+        source_id="custom",
+        custom_url_template="https://example.test/{z}/{x}/{y}.png",
+    )
 
     with pytest.raises(SourcePolicyError, match="preview-only"):
         build_map(request, provider=FakeProvider())
+
+
+def test_build_crops_to_exact_requested_bounds(tmp_path: Path) -> None:
+    requested = Bounds(west=-71.088, south=42.358, east=-71.087, north=42.359)
+    request = local_request(
+        tmp_path,
+        bounds=requested,
+        origin=Origin(latitude=42.3585, longitude=-71.0875),
+        name="exact_crop",
+        emit_moos=False,
+    )
+
+    result = build_map(request, provider=FakeProvider())
+
+    assert result.plan.actual_bounds == requested
+    assert result.plan.download_bounds != requested
+    assert result.plan.pixel_width < 512
+    assert result.plan.pixel_height < 512
+    with Image.open(result.tiff_path) as image:
+        assert image.size == (result.plan.pixel_width, result.plan.pixel_height)
+    info = parse_info_file(result.info_path)
+    assert info.bounds.west == pytest.approx(requested.west, abs=1e-10)
+    assert info.bounds.south == pytest.approx(requested.south, abs=1e-10)
+    assert info.bounds.east == pytest.approx(requested.east, abs=1e-10)
+    assert info.bounds.north == pytest.approx(requested.north, abs=1e-10)
 
 
 def test_outside_origin_is_allowed_with_warning(tmp_path: Path) -> None:

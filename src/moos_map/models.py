@@ -101,11 +101,41 @@ class TileRange:
 
 
 @dataclass(frozen=True, slots=True)
+class PixelWindow:
+    left: float
+    top: float
+    right: float
+    bottom: float
+    output_width: int
+    output_height: int
+
+    @property
+    def source_width(self) -> float:
+        return self.right - self.left
+
+    @property
+    def source_height(self) -> float:
+        return self.bottom - self.top
+
+    def as_dict(self) -> dict[str, float | int]:
+        return {
+            "left": self.left,
+            "top": self.top,
+            "right": self.right,
+            "bottom": self.bottom,
+            "source_width": self.source_width,
+            "source_height": self.source_height,
+            "output_width": self.output_width,
+            "output_height": self.output_height,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class MapRequest:
     bounds: Bounds
     origin: Origin
     zoom: int
-    source_id: str = "usgs-imagery"
+    source_id: str = "google-satellite"
     name: str = "moos_map"
     output_dir: Path = field(default_factory=lambda: Path.home() / "moos-maps")
     emit_moos: bool = False
@@ -122,8 +152,10 @@ class MapPlan:
     source: dict[str, Any]
     requested_bounds: Bounds
     actual_bounds: Bounds
+    download_bounds: Bounds
     origin: Origin
     tiles: TileRange
+    crop: PixelWindow
     tile_size: int
     pixel_width: int
     pixel_height: int
@@ -150,8 +182,10 @@ class MapPlan:
             "source": self.source,
             "requested_bounds": self.requested_bounds.as_dict(),
             "actual_bounds": self.actual_bounds.as_dict(),
+            "download_bounds": self.download_bounds.as_dict(),
             "origin": self.origin.as_dict(),
             "tiles": self.tiles.as_dict(),
+            "crop": self.crop.as_dict(),
             "tile_size": self.tile_size,
             "pixel_width": self.pixel_width,
             "pixel_height": self.pixel_height,

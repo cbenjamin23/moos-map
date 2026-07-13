@@ -8,7 +8,7 @@ from pathlib import Path
 from PIL import Image
 
 from .errors import FetchError
-from .models import TileRange
+from .models import PixelWindow, TileRange
 
 
 def stitch_tiles(
@@ -35,6 +35,17 @@ def stitch_tiles(
             top = (y - tiles.y_min) * tile_size
             output.paste(tile, (left, top))
     return output
+
+
+def crop_to_pixel_window(image: Image.Image, crop: PixelWindow) -> Image.Image:
+    """Resample an exact fractional tile window into a tightly cropped raster."""
+
+    return image.transform(
+        (crop.output_width, crop.output_height),
+        Image.Transform.EXTENT,
+        data=(crop.left, crop.top, crop.right, crop.bottom),
+        resample=Image.Resampling.BICUBIC,
+    )
 
 
 def save_tiff_atomic(image: Image.Image, destination: Path) -> None:

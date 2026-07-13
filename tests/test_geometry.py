@@ -6,6 +6,7 @@ from moos_map.geometry import (
     bounds_for_tile_range,
     crosses_utm_zone,
     estimate_vertical_mapping_error,
+    pixel_window_for_bounds,
     tile_range_for_bounds,
 )
 from moos_map.models import Bounds, TileRange
@@ -28,6 +29,20 @@ def test_small_request_rounds_outward_to_every_intersecting_tile() -> None:
     assert actual.south <= request.south
     assert actual.east >= request.east
     assert actual.north >= request.north
+
+
+def test_exact_crop_window_is_smaller_than_downloaded_tile_grid() -> None:
+    request = Bounds(west=-71.088, south=42.358, east=-71.087, north=42.359)
+    tiles = tile_range_for_bounds(request, 16)
+
+    crop = pixel_window_for_bounds(request, tiles)
+
+    assert crop.output_width == 47
+    assert crop.output_height == 64
+    assert crop.left > 0
+    assert crop.top > 0
+    assert crop.right < tiles.columns * 256
+    assert crop.bottom < tiles.rows * 256
 
 
 def test_utm_zone_boundary_detection() -> None:

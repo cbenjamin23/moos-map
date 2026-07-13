@@ -34,7 +34,10 @@ def test_plan_api_uses_shared_core() -> None:
     assert response.status_code == 200
     plan = response.json()
     assert plan["tiles"]["count"] == 4
-    assert plan["pixel_width"] == 512
+    assert plan["pixel_width"] < 512
+    assert plan["pixel_height"] < 512
+    assert plan["actual_bounds"] == plan["requested_bounds"]
+    assert plan["download_bounds"] != plan["requested_bounds"]
     assert "estimated_max_vertical_mapping_error_m" in plan
 
 

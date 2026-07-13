@@ -42,12 +42,12 @@ def _add_map_arguments(parser: argparse.ArgumentParser) -> None:
         help="MOOS LatOrigin and LongOrigin",
     )
     parser.add_argument(
-        "--zoom", type=int, default=16, help="XYZ zoom level (default: 16)"
+        "--zoom", type=int, default=20, help="XYZ zoom level (default: 20)"
     )
     parser.add_argument(
         "--source",
-        default="usgs-imagery",
-        help="Built-in source ID (default: usgs-imagery)",
+        default="google-satellite",
+        help="Built-in source ID (default: google-satellite)",
     )
     source_group = parser.add_mutually_exclusive_group()
     source_group.add_argument(
@@ -92,6 +92,7 @@ def _print_plan_human(plan: dict[str, Any]) -> None:
     source = plan["source"]
     tiles = plan["tiles"]
     actual = plan["actual_bounds"]
+    download = plan["download_bounds"]
     print(f"Source: {source['name']} ({source['id']})")
     print(
         f"Tiles: {tiles['count']} "
@@ -102,6 +103,11 @@ def _print_plan_human(plan: dict[str, Any]) -> None:
         "Actual bounds: "
         f"W {actual['west']:.10f}, S {actual['south']:.10f}, "
         f"E {actual['east']:.10f}, N {actual['north']:.10f}"
+    )
+    print(
+        "Downloaded tile bounds: "
+        f"W {download['west']:.10f}, S {download['south']:.10f}, "
+        f"E {download['east']:.10f}, N {download['north']:.10f}"
     )
     print(
         "Approximate ground size: "
@@ -131,11 +137,7 @@ def _print_plan_human(plan: dict[str, Any]) -> None:
         "Estimated maximum placement error across full TIFF: "
         f"{plan['estimated_max_pmarineviewer_position_error_m']:.1f} m"
     )
-    print(
-        "Tile-alignment expansion: "
-        f"{plan['expansion_width_ratio']:.2f}x width, "
-        f"{plan['expansion_height_ratio']:.2f}x height"
-    )
+    print("Output crop: exact requested bounds")
     for warning in plan["warnings"]:
         print(f"Warning: {warning}", file=sys.stderr)
 
@@ -143,7 +145,7 @@ def _print_plan_human(plan: dict[str, Any]) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="moos-map",
-        description="Build tile-aligned TIFF background maps for MOOS-IvP",
+        description="Build exact-crop TIFF background maps for MOOS-IvP",
     )
     parser.add_argument(
         "--version", action="version", version=f"%(prog)s {__version__}"

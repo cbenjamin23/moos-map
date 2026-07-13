@@ -36,6 +36,54 @@ class MapSource:
 
 
 BUILTIN_SOURCES: dict[str, MapSource] = {
+    "google-satellite": MapSource(
+        id="google-satellite",
+        name="Google Satellite",
+        kind="xyz",
+        tile_size=256,
+        min_zoom=0,
+        max_zoom=22,
+        url_template="https://mt.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+        preview_allowed=True,
+        export_allowed=True,
+        attribution="Google",
+        terms_url="https://www.google.com/help/terms_maps/",
+        coverage="Global; maximum native detail varies by location",
+        note="Highest-detail satellite option from Anaxi; confirmed through zoom 22 at MIT.",
+    ),
+    "google-hybrid": MapSource(
+        id="google-hybrid",
+        name="Google Satellite Hybrid",
+        kind="xyz",
+        tile_size=256,
+        min_zoom=0,
+        max_zoom=22,
+        url_template="https://mt.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
+        preview_allowed=True,
+        export_allowed=True,
+        attribution="Google",
+        terms_url="https://www.google.com/help/terms_maps/",
+        coverage="Global; maximum native detail varies by location",
+        note="Satellite imagery with road and place labels, matching Anaxi's hybrid source.",
+    ),
+    "esri-world-imagery": MapSource(
+        id="esri-world-imagery",
+        name="Esri World Imagery",
+        kind="xyz",
+        tile_size=256,
+        min_zoom=0,
+        max_zoom=21,
+        url_template=(
+            "https://server.arcgisonline.com/ArcGIS/rest/services/"
+            "World_Imagery/MapServer/tile/{z}/{y}/{x}"
+        ),
+        preview_allowed=True,
+        export_allowed=True,
+        attribution="Esri, Maxar, Earthstar Geographics, and contributors",
+        terms_url="https://www.esri.com/en-us/legal/terms/full-master-agreement",
+        coverage="Global; maximum native detail varies by location",
+        note="The satellite source used by Ray's prototype; confirmed through zoom 21 at MIT.",
+    ),
     "usgs-imagery": MapSource(
         id="usgs-imagery",
         name="USGS Imagery",
@@ -80,18 +128,18 @@ BUILTIN_SOURCES: dict[str, MapSource] = {
     ),
     "osm-preview": MapSource(
         id="osm-preview",
-        name="OpenStreetMap (preview only)",
+        name="OpenStreetMap Standard",
         kind="xyz",
         tile_size=256,
         min_zoom=0,
         max_zoom=19,
         url_template="https://tile.openstreetmap.org/{z}/{x}/{y}.png",
         preview_allowed=True,
-        export_allowed=False,
+        export_allowed=True,
         attribution="OpenStreetMap contributors",
         terms_url="https://operations.osmfoundation.org/policies/tiles/",
         coverage="Global",
-        note="The standard OSM tile service prohibits bulk/offline export.",
+        note="Street-map source used by Ray and Anaxi; export is enabled for small-area use.",
     ),
 }
 

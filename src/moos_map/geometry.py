@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 
 from .errors import ValidationError
-from .models import Bounds, TileRange, WEB_MERCATOR_MAX_LAT
+from .models import Bounds, PixelWindow, TileRange, WEB_MERCATOR_MAX_LAT
 
 
 EARTH_RADIUS_M = 6_378_137.0
@@ -80,6 +80,29 @@ def bounds_for_tile_range(tiles: TileRange) -> Bounds:
     )
 
 
+def pixel_window_for_bounds(
+    bounds: Bounds, tiles: TileRange, tile_size: int = 256
+) -> PixelWindow:
+    """Return the exact fractional-pixel crop inside a stitched XYZ tile image."""
+
+    left = (longitude_to_tile_x(bounds.west, tiles.zoom) - tiles.x_min) * tile_size
+    right = (longitude_to_tile_x(bounds.east, tiles.zoom) - tiles.x_min) * tile_size
+    top = (latitude_to_tile_y(bounds.north, tiles.zoom) - tiles.y_min) * tile_size
+    bottom = (latitude_to_tile_y(bounds.south, tiles.zoom) - tiles.y_min) * tile_size
+    source_width = right - left
+    source_height = bottom - top
+    if source_width <= 0 or source_height <= 0:
+        raise ValidationError("Requested bounds produce an empty raster crop")
+    return PixelWindow(
+        left=left,
+        top=top,
+        right=right,
+        bottom=bottom,
+        output_width=max(1, math.ceil(source_width)),
+        output_height=max(1, math.ceil(source_height)),
+    )
+
+
 def meters_per_pixel(latitude: float, zoom: int, tile_size: int = 256) -> float:
     _validate_zoom(zoom)
     return (
@@ -120,6 +143,29 @@ def estimate_vertical_mapping_error(tiles: TileRange, samples: int = 256) -> flo
             tiles.y_min + fraction * span, tiles.zoom
         )
         affine_latitude = north + fraction * (south - north)
+        error_m = (
+            abs(math.radians(mercator_latitude - affine_latitude)) * EARTH_RADIUS_M
+        )
+        maximum_error = max(maximum_error, error_m)
+    return maximum_error
+
+
+def estimate_vertical_mapping_error_for_bounds(
+    bounds: Bounds, samples: int = 256
+) -> float:
+    """Estimate Mercator-row versus latitude-linear error for an exact crop."""
+
+    if samples < 2:
+        raise ValidationError("Mapping error estimate requires at least two samples")
+    north_y = latitude_to_tile_y(bounds.north, 0)
+    south_y = latitude_to_tile_y(bounds.south, 0)
+    maximum_error = 0.0
+    for index in range(1, samples):
+        fraction = index / samples
+        mercator_latitude = tile_y_to_latitude(
+            north_y + fraction * (south_y - north_y), 0
+        )
+        affine_latitude = bounds.north + fraction * (bounds.south - bounds.north)
         error_m = (
             abs(math.radians(mercator_latitude - affine_latitude)) * EARTH_RADIUS_M
         )

@@ -18,15 +18,16 @@ from .geometry import (
     approximate_ground_size,
     bounds_for_tile_range,
     crosses_utm_zone,
-    estimate_vertical_mapping_error,
+    estimate_vertical_mapping_error_for_bounds,
     meters_per_pixel,
+    pixel_window_for_bounds,
     tile_range_for_bounds,
     utm_zone_number,
 )
 from .models import BuildResult, MapPlan, MapRequest
 from .moos_compat import estimate_pmarineviewer_placement
 from .moos_files import write_info_file, write_moos_snippet
-from .raster import save_tiff_atomic, stitch_tiles
+from .raster import crop_to_pixel_window, save_tiff_atomic, stitch_tiles
 from .sources import MapSource, resolve_source
 from .verification import verify_bundle
 
@@ -79,12 +80,8 @@ def plan_map(request: MapRequest, source: MapSource | None = None) -> MapPlan:
         )
 
     tiles = tile_range_for_bounds(request.bounds, request.zoom)
-    actual_bounds = bounds_for_tile_range(tiles)
-    if crosses_utm_zone(actual_bounds):
-        raise ValidationError(
-            "Rounding outward to whole tiles crosses a UTM zone boundary; "
-            "choose a higher zoom or move the requested edge away from the boundary"
-        )
+    download_bounds = bounds_for_tile_range(tiles)
+    actual_bounds = request.bounds
     map_center_latitude = (actual_bounds.north + actual_bounds.south) / 2.0
     map_center_longitude = (actual_bounds.east + actual_bounds.west) / 2.0
     map_zone = utm_zone_number(map_center_longitude, map_center_latitude)
@@ -95,9 +92,10 @@ def plan_map(request: MapRequest, source: MapSource | None = None) -> MapPlan:
             f"{map_zone}; current MOOS geodesy cannot place this reliably"
         )
     requested_width, requested_height = approximate_ground_size(request.bounds)
-    actual_width, actual_height = approximate_ground_size(actual_bounds)
-    pixel_width = tiles.columns * source.tile_size
-    pixel_height = tiles.rows * source.tile_size
+    actual_width, actual_height = requested_width, requested_height
+    crop = pixel_window_for_bounds(request.bounds, tiles, source.tile_size)
+    pixel_width = crop.output_width
+    pixel_height = crop.output_height
     center_latitude = map_center_latitude
 
     warnings: list[str] = []
@@ -119,14 +117,9 @@ def plan_map(request: MapRequest, source: MapSource | None = None) -> MapPlan:
             f"Plan creates {pixel_width * pixel_height:,} pixels, above the configured "
             f"limit of {request.max_pixels:,}"
         )
-    width_ratio = actual_width / requested_width
-    height_ratio = actual_height / requested_height
-    if width_ratio > 2 or height_ratio > 2:
-        warnings.append(
-            "Tile alignment more than doubles at least one requested dimension; "
-            "select a larger requested area or a source supporting a higher zoom"
-        )
-    mapping_error = estimate_vertical_mapping_error(tiles)
+    width_ratio = 1.0
+    height_ratio = 1.0
+    mapping_error = estimate_vertical_mapping_error_for_bounds(actual_bounds)
     resolution = meters_per_pixel(center_latitude, request.zoom, source.tile_size)
     if mapping_error > resolution:
         warnings.append(
@@ -143,18 +136,24 @@ def plan_map(request: MapRequest, source: MapSource | None = None) -> MapPlan:
             "Estimated pMarineViewer placement error exceeds one pixel inside the "
             f"requested area ({viewer.requested_area_max_position_error_m:.1f} m maximum)"
         )
-    if viewer.max_position_error_m > resolution:
+    if (
+        viewer.max_position_error_m > resolution
+        and viewer.max_position_error_m
+        > viewer.requested_area_max_position_error_m * 1.01
+    ):
         warnings.append(
             "Estimated pMarineViewer affine/UTM placement error exceeds one pixel "
-            f"across the full rounded TIFF ({viewer.max_position_error_m:.1f} m maximum)"
+            f"across the full TIFF ({viewer.max_position_error_m:.1f} m maximum)"
         )
 
     return MapPlan(
         source=source.as_dict(),
         requested_bounds=request.bounds,
         actual_bounds=actual_bounds,
+        download_bounds=download_bounds,
         origin=request.origin,
         tiles=tiles,
+        crop=crop,
         tile_size=source.tile_size,
         pixel_width=pixel_width,
         pixel_height=pixel_height,
@@ -228,11 +227,15 @@ def build_map(
             staged_info = staging_dir / info_path.name
             staged_moos = staging_dir / moos_path.name if moos_path else None
 
-            image = stitch_tiles(tile_data, plan.tiles, source.tile_size)
+            stitched_image = stitch_tiles(tile_data, plan.tiles, source.tile_size)
             try:
-                save_tiff_atomic(image, staged_tiff)
+                image = crop_to_pixel_window(stitched_image, plan.crop)
+                try:
+                    save_tiff_atomic(image, staged_tiff)
+                finally:
+                    image.close()
             finally:
-                image.close()
+                stitched_image.close()
 
             write_info_file(
                 staged_info,
