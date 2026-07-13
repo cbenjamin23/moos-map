@@ -16,8 +16,9 @@ UI  ─┘           ├> source registry
 ## Modules
 
 - `models.py`: immutable request, bounds, tile range, plan, and result types.
-- `geometry.py`: XYZ/Web Mercator math, outward tile selection, UTM checks,
-  ground resolution, and pMarineViewer mapping-error estimation.
+- `geometry.py`: XYZ/Web Mercator math, intersecting-tile selection,
+  fractional-pixel crop windows, UTM checks, ground resolution, and
+  pMarineViewer mapping-error estimation.
 - `moos_compat.py`: a small, dependency-free replica of the current
   CMOOSGeodesy/BackImg UTM placement math used to predict viewer dimensions,
   local image center, and sampled affine placement error.
@@ -25,8 +26,8 @@ UI  ─┘           ├> source registry
   connection details.
 - `acquisition.py`: validated HTTP and MBTiles tile readers.
 - `cache.py`: atomic, source-isolated HTTP tile cache.
-- `raster.py`: deterministic row-major tile stitching and atomic RGB TIFF
-  output.
+- `raster.py`: deterministic row-major tile stitching, exact fractional-pixel
+  resampling, and atomic RGB TIFF output.
 - `moos_files.py`: strict six-key `.info` parsing/writing and optional mission
   snippets.
 - `verification.py`: independent bundle checks before returning success.
@@ -58,7 +59,8 @@ georeferencing tags in place of the sidecar.
 2. CLI planning, building, and verification.
 3. Local browser UI over the same core.
 4. Compatibility and end-to-end validation with current MOOS-IvP.
-5. Exact crop/reprojection and additional explicitly export-permitted sources.
-6. Multiple-background workflows after the pMarineViewer texture allocation
+5. Exact crop and high-detail Ray/Anaxi sources. (Complete in v0.2.)
+6. UTM rotation/reprojection if placement correction remains generator-side.
+7. Multiple-background workflows after the pMarineViewer texture allocation
    defect is handled.
-7. Coding-agent skill, last, once the stable UI/CLI workflow is known.
+8. Coding-agent skill, last, once the stable UI/CLI workflow is known.

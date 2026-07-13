@@ -1,11 +1,11 @@
 # MOOS Map
 
-MOOS Map builds tile-aligned TIFF background maps for MOOS-IvP. It has a
+MOOS Map builds exact-crop TIFF background maps for MOOS-IvP. It has a
 shared Python core, a command-line interface, and a local browser interface.
 Both interfaces plan and build maps through the same source, geometry,
 acquisition, raster, and MOOS compatibility modules.
 
-The v1 output is intentionally small:
+The output bundle is intentionally small:
 
 ```text
 harbor.tif
@@ -33,9 +33,10 @@ python -m pip install -e '.[test]'
 moos-map ui
 ```
 
-The UI opens on `http://127.0.0.1:8765`. Draw two opposite corners for the
-requested map, place the mission origin, inspect the tile-aligned plan, and
-then build the bundle.
+The UI opens on `http://127.0.0.1:8765`. Click and drag directly on the map to
+select a region. Dragging again immediately replaces it. Source, zoom, and
+selection changes update the summary automatically; there is no separate plan
+step. Advanced MOOS origin controls live in the persistent Placement drawer.
 
 ## CLI
 
@@ -51,8 +52,8 @@ Inspect a plan without downloading:
 moos-map plan \
   --bounds -71.088 42.358 -71.087 42.359 \
   --origin 42.3585 -71.0875 \
-  --zoom 16 \
-  --source usgs-imagery
+  --zoom 20 \
+  --source google-satellite
 ```
 
 Build it:
@@ -61,8 +62,8 @@ Build it:
 moos-map build \
   --bounds -71.088 42.358 -71.087 42.359 \
   --origin 42.3585 -71.0875 \
-  --zoom 16 \
-  --source usgs-imagery \
+  --zoom 20 \
+  --source google-satellite \
   --name harbor \
   --output-dir ~/moos-maps \
   --emit-moos
@@ -77,21 +78,18 @@ moos-map verify ~/moos-maps/harbor.tif
 Add `--json` to `sources`, `plan`, `build`, or `verify` for machine-readable
 stdout. Progress remains on stderr.
 
-## How v1 chooses the image boundary
+## Exact cropping
 
-Remote tile services divide the map into 256-by-256-pixel image files. MOOS
-Map selects every file touched by the requested rectangle, rounding outward,
-and stitches those complete files together. The `.info` records the actual
-outer tile boundaries, so no requested map content is cut off.
+Remote services divide imagery into 256-by-256-pixel source tiles. MOOS Map
+downloads every tile touched by the requested rectangle, stitches them in
+memory, and performs a fractional-pixel resample to the exact requested
+bounds. The extra source-tile margins are discarded. The `.info` therefore
+records the dragged or CLI-requested bounds exactly.
 
-This is simpler and more reproducible than cropping. It can include more area
-than requested, especially for very small requests; the plan reports that
-expansion before downloading. It also estimates the vertical placement error
-caused by displaying Web Mercator tile imagery with pMarineViewer's affine
-raster mapping. Because current `BackImg` derives an unrotated rectangle from
-diagonal UTM corner differences, the plan separately predicts the dimensions
-pMarineViewer will use and sampled placement error both inside the requested
-area and across the full rounded TIFF.
+The summary estimates the residual placement error caused by pMarineViewer's
+affine raster mapping. Current `BackImg` derives an unrotated rectangle from
+diagonal UTM corner differences; exact cropping reduces the affected area but
+does not rotate imagery into the UTM grid.
 
 ## Mission origin versus image center
 
@@ -106,14 +104,17 @@ in the same UTM zone as the map.
 
 Built-in export sources:
 
+- `google-satellite` — highest-detail default, confirmed through zoom 22 at MIT.
+- `google-hybrid` — Google satellite imagery with labels, through zoom 22.
+- `esri-world-imagery` — the satellite source used by Ray, through zoom 21 at MIT.
 - `usgs-imagery` — U.S. orthoimagery, zoom 0–16.
 - `usgs-topo` — U.S. topographic map, zoom 0–16.
+- `osm-preview` — OpenStreetMap Standard, zoom 0–19.
 - Local MBTiles archives supplied by the user.
 
-`osm-preview` is available for interactive context but the standard OSM tile
-service is not enabled for static/offline export. A custom XYZ source can be
-used with `--url-template` only after `--accept-source-terms` confirms that the
-source permits the intended use.
+The Google and Esri endpoints match the sources in Anaxi and Ray's prototype.
+Native detail varies geographically. A custom XYZ source can be used with
+`--url-template` after `--accept-source-terms` confirms access.
 
 The tile cache is stored under `${XDG_CACHE_HOME:-~/.cache}/moos-map/tiles`.
 
@@ -121,7 +122,7 @@ The tile cache is stored under `${XDG_CACHE_HOME:-~/.cache}/moos-map/tiles`.
 
 - One active background bundle per build. Multiple-background orchestration is
   deferred while the upstream pMarineViewer texture allocation issue is fixed.
-- Whole XYZ tiles only; exact crop/reprojection is a later mode.
+- Exact geographic crop is implemented; full UTM rotation/reprojection is not.
 - Antimeridian and UTM-zone-crossing maps are rejected.
 - TIFF and `.info` are required; `.moos` is optional.
 - TIFF filenames use lowercase `.tif` and no whitespace.
