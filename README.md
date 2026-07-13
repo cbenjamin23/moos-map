@@ -65,7 +65,7 @@ moos-map plan \
   --bounds -71.088 42.358 -71.087 42.359 \
   --origin 42.3585 -71.0875 \
   --zoom 17 \
-  --source google-satellite
+  --source esri-world-imagery
 ```
 
 Build it:
@@ -75,7 +75,7 @@ moos-map build \
   --bounds -71.088 42.358 -71.087 42.359 \
   --origin 42.3585 -71.0875 \
   --zoom 17 \
-  --source google-satellite \
+  --source esri-world-imagery \
   --name harbor \
   --output-dir ~/moos-maps
 ```
@@ -93,20 +93,6 @@ moos-map verify ~/moos-maps/harbor/harbor.tif
 
 Add `--json` to `sources`, `plan`, `build`, or `verify` for machine-readable
 stdout. Progress remains on stderr.
-
-### Replacing an existing mission map
-
-pMarineViewer's `zoom`, `set_pan_x`, and `set_pan_y` values are based on TIFF
-pixels, not geographic meters. A higher-resolution replacement with the same
-`.info` bounds therefore loads correctly but appears more zoomed-in if the old
-viewer settings are copied unchanged. The generated `.moos` snippet records
-the TIFF dimensions and the conversion formula. For the same bounds:
-
-```text
-new_zoom  = old_zoom  * old_width  / new_width
-new_pan_x = old_pan_x * new_width  / old_width
-new_pan_y = old_pan_y * new_height / old_height
-```
 
 ## Exact cropping
 
@@ -136,10 +122,11 @@ in the same UTM zone as the map.
 
 Built-in sources:
 
-- `google-satellite` — highest-detail default, confirmed through zoom 22 at MIT.
+- `esri-world-imagery` — default satellite source and the source used by Ray,
+  through zoom 21 at MIT.
+- `google-satellite` — high-detail satellite imagery, confirmed through zoom 22 at MIT.
 - `google-hybrid` — Google satellite imagery with labels, through zoom 22.
 - `google-maps` — detailed Google street map, through zoom 22 at MIT.
-- `esri-world-imagery` — the satellite source used by Ray, through zoom 21 at MIT.
 - `esri-world-topo` — detailed Esri topographic map, through zoom 19 at MIT.
 - Local MBTiles archives supplied by the user.
 
