@@ -25,7 +25,8 @@
   L.control.scale({ imperial: false }).addTo(map);
 
   function number(id) {
-    return Number($(id).value);
+    const value = $(id).value.trim();
+    return value === "" ? Number.NaN : Number(value);
   }
 
   function setNumber(id, value) {
@@ -63,34 +64,42 @@
     overlay.element.style.height = `${Math.max(1, southeast.y - northwest.y)}px`;
   }
 
-  function createOriginOverlay() {
-    const element = document.createElement("div");
-    element.className = "origin-dot";
-    element.title = "MOOS mission origin";
-    element.hidden = true;
-    map.getContainer().appendChild(element);
-    return {
-      element,
-      point: null,
-      setLatLng(point) {
-        this.point = L.latLng(point);
-        this.element.hidden = false;
-        positionOriginOverlay(this);
-      },
-      hide() { this.element.hidden = true; },
-    };
+  function setOriginMode(automatic) {
+    $("auto-origin").checked = automatic;
+    $("origin-lat").disabled = automatic;
+    $("origin-lon").disabled = automatic;
+    $("origin-fields").classList.toggle("hidden", automatic);
   }
 
-  function positionOriginOverlay(overlay) {
-    if (!overlay || !overlay.point || overlay.element.hidden) return;
-    const point = map.latLngToContainerPoint(overlay.point);
-    overlay.element.style.left = `${point.x}px`;
-    overlay.element.style.top = `${point.y}px`;
+  function updateOriginFromMarker(event, { replan = false } = {}) {
+    const point = event.target.getLatLng();
+    setOriginMode(false);
+    setNumber("origin-lat", point.lat);
+    setNumber("origin-lon", point.lng);
+    if (replan) schedulePlan(0);
+  }
+
+  function createOriginMarker() {
+    const marker = L.marker([0, 0], {
+      autoPan: true,
+      bubblingMouseEvents: false,
+      draggable: true,
+      keyboard: true,
+      title: "Drag to set the MOOS mission origin",
+      icon: L.divIcon({
+        className: "origin-dot",
+        iconAnchor: [5, 5],
+        iconSize: [10, 10],
+      }),
+    });
+    marker.on("dragstart", (event) => updateOriginFromMarker(event));
+    marker.on("drag", (event) => updateOriginFromMarker(event));
+    marker.on("dragend", (event) => updateOriginFromMarker(event, { replan: true }));
+    return marker;
   }
 
   function positionOverlays() {
     positionBoxOverlay(state.selectionLayer);
-    positionOriginOverlay(state.originMarker);
   }
 
   function leafletBoundsToObject(bounds) {
@@ -109,13 +118,49 @@
     };
   }
 
-  function updateBoundsReadout() {
+  function updateCornerInputs() {
     const values = state.bounds || {};
-    for (const key of ["west", "south", "east", "north"]) {
-      $(`bound-${key}`).textContent = Number.isFinite(values[key])
-        ? values[key].toFixed(8)
-        : "—";
+    const fields = {
+      north: "corner-north",
+      west: "corner-west",
+      south: "corner-south",
+      east: "corner-east",
+    };
+    for (const [key, id] of Object.entries(fields)) {
+      $(id).value = Number.isFinite(values[key]) ? values[key].toFixed(8) : "";
     }
+    $("corner-error").hidden = true;
+    $("corner-error").textContent = "";
+  }
+
+  function applyCornerInputs() {
+    const values = {
+      north: number("corner-north"),
+      west: number("corner-west"),
+      south: number("corner-south"),
+      east: number("corner-east"),
+    };
+    if (Object.values(values).some((value) => !Number.isFinite(value))) return;
+
+    let message = "";
+    if (values.north > 85.05112878 || values.south < -85.05112878) {
+      message = "Corner latitudes must stay within the Web Mercator map limits.";
+    } else if (values.west < -180 || values.east > 180) {
+      message = "Corner longitudes must be between −180 and 180.";
+    } else if (values.north <= values.south) {
+      message = "Top-left latitude must be north of bottom-right latitude.";
+    } else if (values.west >= values.east) {
+      message = "Top-left longitude must be west of bottom-right longitude.";
+    }
+
+    if (message) {
+      $("corner-error").textContent = message;
+      $("corner-error").hidden = false;
+      return;
+    }
+
+    $("corner-error").hidden = true;
+    finalizeSelection(values, { fit: true });
   }
 
   function updateOriginFromSelection() {
@@ -132,10 +177,13 @@
     const latitude = number("origin-lat");
     const longitude = number("origin-lon");
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-      if (state.originMarker) state.originMarker.hide();
+      if (state.originMarker && map.hasLayer(state.originMarker)) {
+        state.originMarker.remove();
+      }
       return;
     }
-    if (!state.originMarker) state.originMarker = createOriginOverlay();
+    if (!state.originMarker) state.originMarker = createOriginMarker();
+    if (!map.hasLayer(state.originMarker)) state.originMarker.addTo(map);
     state.originMarker.setLatLng([latitude, longitude]);
   }
 
@@ -148,7 +196,7 @@
       [bounds.south, bounds.west],
       [bounds.north, bounds.east],
     ]);
-    updateBoundsReadout();
+    updateCornerInputs();
     updateOriginFromSelection();
     if (fit) {
       map.fitBounds(state.selectionLayer.bounds, { padding: [35, 35], maxZoom: 21 });
@@ -163,13 +211,15 @@
     state.previousBounds = state.bounds;
     state.bounds = null;
     state.plan = null;
-    updateBoundsReadout();
+    updateCornerInputs();
     $("build-button").disabled = true;
     state.selectionStart = event.latlng;
     if (!state.selectionLayer) state.selectionLayer = createBoxOverlay();
     state.selectionLayer.hide();
     state.selectionLayer.element.classList.add("drawing");
-    if (state.originMarker) state.originMarker.hide();
+    if (state.originMarker && map.hasLayer(state.originMarker)) {
+      state.originMarker.remove();
+    }
     $("summary").innerHTML = emptySummary(
       "Choosing region…",
       "Move the pointer, then click the opposite corner.",
@@ -219,7 +269,7 @@
     }
     state.selectionLayer.hide();
     state.previousBounds = null;
-    updateBoundsReadout();
+    updateCornerInputs();
     $("summary").innerHTML = emptySummary(
       "No region selected",
       "Click one corner, move the pointer, then click the opposite corner.",
@@ -231,13 +281,26 @@
     if (state.previewLayer) state.previewLayer.remove();
     state.previewLayer = null;
     if (!source || !source.url_template) return;
-    state.previewLayer = L.tileLayer(source.url_template, {
+    const url = source.url_template.replace("{source_z}", "{z}");
+    state.previewLayer = L.tileLayer(url, {
       minZoom: source.min_zoom,
       maxZoom: 24,
       maxNativeZoom: source.max_zoom,
+      zoomOffset: source.url_zoom_offset || 0,
       attribution: source.attribution,
     }).addTo(map);
     state.previewLayer.bringToBack();
+  }
+
+  function configureZoomRange() {
+    const source = selectedSource();
+    const minZoom = source ? source.min_zoom : 0;
+    const maxZoom = source ? source.max_zoom : 30;
+    $("zoom").min = String(minZoom);
+    $("zoom").max = String(maxZoom);
+    if (number("zoom") < minZoom) $("zoom").value = String(minZoom);
+    if (number("zoom") > maxZoom) $("zoom").value = String(maxZoom);
+    $("zoom-value").value = $("zoom").value;
   }
 
   function configureSource() {
@@ -248,21 +311,17 @@
     $("url-template").required = id === "custom";
     $("mbtiles-path").required = id === "mbtiles";
 
-    const maxZoom = source ? source.max_zoom : 30;
-    $("zoom").max = String(maxZoom);
-    if (number("zoom") > maxZoom) $("zoom").value = String(maxZoom);
-    $("zoom-value").value = $("zoom").value;
-
     if (source) {
-      $("source-note").textContent = `${source.coverage}. Native zoom ${source.min_zoom}–${source.max_zoom}. ${source.note}`;
+      $("source-note").innerHTML = layerDetailsHtml(source);
       setPreview(source);
     } else if (id === "custom") {
-      $("source-note").textContent = "Enter an XYZ tile URL and confirm export access.";
+      $("source-note").innerHTML = '<p class="detail-description">Enter an XYZ tile URL and confirm that it may be exported.</p>';
       setPreview(null);
     } else {
-      $("source-note").textContent = "Build from a local MBTiles archive. Browser preview is not shown.";
+      $("source-note").innerHTML = '<p class="detail-description">Build from a local MBTiles archive. Browser preview is not shown.</p>';
       setPreview(null);
     }
+    configureZoomRange();
     schedulePlan();
   }
 
@@ -279,7 +338,7 @@
       name: $("name").value,
       output_dir: $("output-dir").value,
       emit_moos: $("emit-moos").checked,
-      force: $("force").checked,
+      refresh_tiles: $("refresh-tiles").checked,
       custom_url_template: $("source").value === "custom" ? $("url-template").value : null,
       accept_custom_source_terms: $("accept-terms").checked,
       mbtiles_path: $("source").value === "mbtiles" ? $("mbtiles-path").value : null,
@@ -287,10 +346,18 @@
   }
 
   async function api(path, options = {}) {
-    const response = await fetch(path, {
-      headers: { "Content-Type": "application/json" },
-      ...options,
-    });
+    let response;
+    try {
+      response = await fetch(path, {
+        headers: { "Content-Type": "application/json" },
+        ...options,
+      });
+    } catch (cause) {
+      throw new Error(
+        "The local MOOS Map service is not running. Relaunch it with “moos-map ui”, then retry the selection.",
+        { cause },
+      );
+    }
     const data = await response.json();
     if (!response.ok) {
       const detail = Array.isArray(data.detail)
@@ -349,7 +416,7 @@
     if (!state.bounds) return;
     const button = $("build-button");
     button.disabled = true;
-    button.textContent = "Building exact crop…";
+    button.textContent = "Building map…";
     try {
       const plan = state.plan || await refreshSummary();
       if (!plan) return;
@@ -363,7 +430,7 @@
       showError(error);
     } finally {
       button.disabled = !state.plan || !state.plan.source.export_allowed;
-      button.textContent = "Build exact crop";
+      button.textContent = "Build Map";
     }
   }
 
@@ -372,7 +439,7 @@
       ? `<ul class="warnings">${plan.warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul>`
       : "";
     const success = build
-      ? '<div class="success">Exact crop built and verified successfully.</div>'
+      ? '<div class="success">Map built and verified successfully.</div>'
       : "";
     const paths = build ? `<ul class="paths">
       <li>TIFF: <code>${escapeHtml(build.tiff_path)}</code></li>
@@ -380,13 +447,20 @@
       ${build.moos_path ? `<li>MOOS: <code>${escapeHtml(build.moos_path)}</code></li>` : ""}
       <li>${build.downloaded_tiles} downloaded, ${build.cache_hits} from cache</li>
     </ul>` : "";
+    const actualTiffBytes = build?.verification?.details?.file_size_bytes;
+    const tiffSizeBytes = actualTiffBytes ?? plan.estimated_tiff_size_bytes;
+    const tiffSizeLabel = actualTiffBytes ? "TIFF file size" : "Estimated TIFF size";
+    const tiffSizeValue = `${actualTiffBytes ? "" : "≈"}${formatFileSize(tiffSizeBytes, Boolean(actualTiffBytes))}`;
+    const tiffSizeTip = actualTiffBytes
+      ? `Exact on-disk size of the completed LZW-compressed TIFF: ${actualTiffBytes.toLocaleString()} bytes.`
+      : "A rough pre-build estimate based on three RGB bytes per output pixel. The completed LZW-compressed TIFF may be smaller or larger depending on the imagery.";
     return `${success}<div class="summary-metrics">
       ${metric("Exact TIFF crop", `${plan.pixel_width.toLocaleString()} × ${plan.pixel_height.toLocaleString()} px`, "The TIFF is resampled to the exact selected bounds; extra source-tile margins are discarded.")}
-      ${metric("Source tiles", `${plan.tiles.count} (${plan.tiles.columns} × ${plan.tiles.rows})`, "These tiles are downloaded to cover the selection before exact cropping. They are cached for reuse.")}
+      ${metric(tiffSizeLabel, tiffSizeValue, tiffSizeTip)}
       ${metric("Source resolution", `${plan.approximate_meters_per_pixel.toFixed(3)} m/px`, "Nominal Web Mercator ground resolution at the selected latitude and export zoom.")}
       ${metric("Ground area", `${formatMeters(plan.approximate_ground_width_m)} × ${formatMeters(plan.approximate_ground_height_m)}`, "Approximate geographic width and height of the exact selected bounds.")}
-      ${metric("Viewer size", `${formatMeters(plan.pmarineviewer_width_m)} × ${formatMeters(plan.pmarineviewer_height_m)}`, "Dimensions current pMarineViewer is expected to assign to the image using its UTM corner calculation.")}
-      ${metric("Placement error", `${plan.estimated_max_requested_area_position_error_m.toFixed(1)} m max`, "Sampled difference between true MOOS UTM coordinates and pMarineViewer's current affine image placement. Cropping reduces this but does not rotate the raster into UTM.")}
+      ${metric("Source tiles", `${plan.tiles.count} (${plan.tiles.columns} × ${plan.tiles.rows})`, "The complete source tiles intersecting the selection are downloaded, then cropped to the exact selected bounds. Tiles are cached for reuse.")}
+      ${metric("Display alignment", `${plan.estimated_max_requested_area_position_error_m.toFixed(1)} m model max`, "A theoretical worst-case comparison between the TIFF's affine placement and MOOS UTM coordinates inside the selection. It is not a measured image-registration error, and it does not change mission navigation or local XY coordinates.")}
     </div>
     <p class="summary-bounds">W ${plan.actual_bounds.west.toFixed(8)} · S ${plan.actual_bounds.south.toFixed(8)} · E ${plan.actual_bounds.east.toFixed(8)} · N ${plan.actual_bounds.north.toFixed(8)}</p>
     ${warnings}${paths}`;
@@ -394,6 +468,14 @@
 
   function metric(label, value, tip) {
     return `<div class="metric"><span>${label}<span class="info-icon" tabindex="0" data-tip="${escapeHtml(tip)}">i</span></span><strong>${value}</strong></div>`;
+  }
+
+  function layerDetailsHtml(layer) {
+    return `<dl class="detail-list">
+      <div><dt>Coverage</dt><dd>${escapeHtml(layer.coverage)}</dd></div>
+      <div><dt>Zoom</dt><dd>${layer.min_zoom}–${layer.max_zoom}</dd></div>
+      <div><dt>Attribution</dt><dd>${escapeHtml(layer.attribution)}</dd></div>
+    </dl><p class="detail-description">${escapeHtml(layer.note)}</p>`;
   }
 
   function emptySummary(title, description) {
@@ -406,6 +488,12 @@
 
   function formatMeters(value) {
     return value >= 1000 ? `${(value / 1000).toFixed(2)} km` : `${value.toFixed(0)} m`;
+  }
+
+  function formatFileSize(bytes, precise = false) {
+    if (bytes < 1_000) return `${bytes.toLocaleString()} bytes`;
+    if (bytes < 1_000_000) return `${(bytes / 1_000).toFixed(precise ? 1 : 0)} KB`;
+    return `${(bytes / 1_000_000).toFixed(precise ? 2 : bytes < 10_000_000 ? 1 : 0)} MB`;
   }
 
   function escapeHtml(value) {
@@ -423,14 +511,8 @@
     options.push('<option value="mbtiles">Local MBTiles archive</option>');
     options.push('<option value="custom">Custom XYZ source</option>');
     $("source").innerHTML = options.join("");
-    $("source").value = "google-satellite";
+    $("source").value = "esri-world-imagery";
     configureSource();
-  }
-
-  function setDrawer(open) {
-    $("placement-drawer").classList.toggle("open", open);
-    $("placement-toggle").setAttribute("aria-expanded", String(open));
-    $("placement-content").inert = !open;
   }
 
   map.on("click", handleMapClick);
@@ -458,14 +540,12 @@
   $("accept-terms").addEventListener("change", () => schedulePlan(0));
   $("map-form").addEventListener("submit", buildMap);
 
-  $("placement-toggle").addEventListener("click", () => {
-    setDrawer(!$("placement-drawer").classList.contains("open"));
-  });
-  $("placement-close").addEventListener("click", () => setDrawer(false));
+  for (const id of ["corner-north", "corner-west", "corner-south", "corner-east"]) {
+    $(id).addEventListener("input", applyCornerInputs);
+  }
   $("auto-origin").addEventListener("change", () => {
     const automatic = $("auto-origin").checked;
-    $("origin-lat").disabled = automatic;
-    $("origin-lon").disabled = automatic;
+    setOriginMode(automatic);
     if (automatic) updateOriginFromSelection();
     schedulePlan(0);
   });

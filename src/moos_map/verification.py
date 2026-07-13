@@ -56,6 +56,7 @@ def verify_bundle(tiff_path: Path) -> VerificationReport:
                         "pixel_width": image.width,
                         "pixel_height": image.height,
                         "pixel_count": image.width * image.height,
+                        "file_size_bytes": tiff_path.stat().st_size,
                         "estimated_pmarineviewer_cpu_gpu_bytes": (
                             image.width * image.height * 8
                         ),

@@ -6,7 +6,7 @@ import pytest
 
 from moos_map.errors import ValidationError
 from moos_map.models import Bounds, Origin
-from moos_map.moos_files import parse_info_file, write_info_file
+from moos_map.moos_files import parse_info_file, write_info_file, write_moos_snippet
 
 
 def test_info_writer_emits_only_six_active_moos_keys(tmp_path: Path) -> None:
@@ -58,3 +58,19 @@ def test_info_parser_rejects_duplicate_key(tmp_path: Path) -> None:
 
     with pytest.raises(ValidationError, match="Duplicate .info key"):
         parse_info_file(path)
+
+
+def test_moos_snippet_contains_copy_ready_mission_settings(tmp_path: Path) -> None:
+    path = tmp_path / "harbor.moos"
+
+    write_moos_snippet(
+        path,
+        tiff_name="harbor.tif",
+        origin=Origin(latitude=42.3585, longitude=-71.0875),
+    )
+
+    content = path.read_text(encoding="utf-8")
+    assert "LatOrigin  = 42.3585000000" in content
+    assert "LongOrigin = -71.0875000000" in content
+    assert "tiff_file = harbor.tif" in content
+    assert "IVP_IMAGE_DIRS" in content

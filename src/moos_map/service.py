@@ -49,6 +49,39 @@ def normalize_map_name(name: str) -> str:
     return value
 
 
+def prepare_bundle_directory(output_directory: Path, map_name: str) -> Path:
+    """Create and validate a writable per-map output directory."""
+
+    try:
+        output_root = output_directory.expanduser().resolve()
+        if output_root.exists() and not output_root.is_dir():
+            raise ValidationError(
+                f"Output directory is not a directory: {output_root}"
+            )
+        output_root.mkdir(parents=True, exist_ok=True)
+
+        bundle_directory = output_root / map_name
+        if bundle_directory.exists() and not bundle_directory.is_dir():
+            raise ValidationError(
+                f"Map bundle path is not a directory: {bundle_directory}"
+            )
+        bundle_directory.mkdir(exist_ok=True)
+
+        with tempfile.NamedTemporaryFile(
+            prefix=".moos-map-write-test-", dir=bundle_directory
+        ):
+            pass
+    except ValidationError:
+        raise
+    except (OSError, RuntimeError) as exc:
+        reason = exc.strerror if isinstance(exc, OSError) and exc.strerror else str(exc)
+        raise ValidationError(
+            f"Cannot create or write to output directory '{output_directory}': {reason}"
+        ) from exc
+
+    return bundle_directory
+
+
 def resolve_request_source(request: MapRequest) -> MapSource:
     return resolve_source(
         request.source_id,
@@ -58,7 +91,10 @@ def resolve_request_source(request: MapRequest) -> MapSource:
     )
 
 
-def plan_map(request: MapRequest, source: MapSource | None = None) -> MapPlan:
+def plan_map(
+    request: MapRequest,
+    source: MapSource | None = None,
+) -> MapPlan:
     source = source or resolve_request_source(request)
     if request.max_tiles < 1:
         raise ValidationError("Maximum tile count must be at least one")
@@ -78,7 +114,6 @@ def plan_map(request: MapRequest, source: MapSource | None = None) -> MapPlan:
             f"Source '{source.id}' supports zoom {source.min_zoom} through "
             f"{source.max_zoom}, not {request.zoom}"
         )
-
     tiles = tile_range_for_bounds(request.bounds, request.zoom)
     download_bounds = bounds_for_tile_range(tiles)
     actual_bounds = request.bounds
@@ -110,7 +145,8 @@ def plan_map(request: MapRequest, source: MapSource | None = None) -> MapPlan:
         )
     if tiles.count > request.max_tiles:
         warnings.append(
-            f"Plan uses {tiles.count} tiles, above the configured limit of {request.max_tiles}"
+            f"Plan uses {tiles.count} tiles, above the configured limit of "
+            f"{request.max_tiles}"
         )
     if pixel_width * pixel_height > request.max_pixels:
         warnings.append(
@@ -121,30 +157,11 @@ def plan_map(request: MapRequest, source: MapSource | None = None) -> MapPlan:
     height_ratio = 1.0
     mapping_error = estimate_vertical_mapping_error_for_bounds(actual_bounds)
     resolution = meters_per_pixel(center_latitude, request.zoom, source.tile_size)
-    if mapping_error > resolution:
-        warnings.append(
-            "Estimated Web Mercator-to-pMarineViewer vertical mapping error exceeds "
-            f"one pixel ({mapping_error:.2f} m)"
-        )
     viewer = estimate_pmarineviewer_placement(
         actual_bounds,
         request.origin,
         requested_bounds=request.bounds,
     )
-    if viewer.requested_area_max_position_error_m > resolution:
-        warnings.append(
-            "Estimated pMarineViewer placement error exceeds one pixel inside the "
-            f"requested area ({viewer.requested_area_max_position_error_m:.1f} m maximum)"
-        )
-    if (
-        viewer.max_position_error_m > resolution
-        and viewer.max_position_error_m
-        > viewer.requested_area_max_position_error_m * 1.01
-    ):
-        warnings.append(
-            "Estimated pMarineViewer affine/UTM placement error exceeds one pixel "
-            f"across the full TIFF ({viewer.max_position_error_m:.1f} m maximum)"
-        )
 
     return MapPlan(
         source=source.as_dict(),
@@ -197,16 +214,15 @@ def build_map(
         )
 
     name = normalize_map_name(request.name)
-    output_dir = request.output_dir.expanduser().resolve()
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = prepare_bundle_directory(request.output_dir, name)
     tiff_path = output_dir / f"{name}.tif"
     info_path = output_dir / f"{name}.info"
     moos_path = output_dir / f"{name}.moos" if request.emit_moos else None
     targets = [tiff_path, info_path] + ([moos_path] if moos_path else [])
     existing = [path for path in targets if path and path.exists()]
-    if existing and not request.force:
+    if existing and not request.overwrite_outputs:
         raise ValidationError(
-            "Output already exists; use --force to replace it: "
+            "Output protection is enabled and these files already exist: "
             + ", ".join(str(path) for path in existing)
         )
 
@@ -216,7 +232,7 @@ def build_map(
         tile_data = fetch_tile_range(
             active_provider,
             plan.tiles,
-            force=request.force,
+            force=request.refresh_source_tiles,
             progress=progress,
         )
         with tempfile.TemporaryDirectory(

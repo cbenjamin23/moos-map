@@ -4,9 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "moos-map"
-version = "0.3.0"
+version = "1.0.0"
 description = "Build exact-crop TIFF background maps for MOOS-IvP"
 readme = "README.md"
+license = "GPL-3.0-only"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115,<1",
@@ -17,7 +18,6 @@ dependencies = [
 
 [project.optional-dependencies]
 test = [
-  "httpx2>=2.5,<3",
   "pytest>=8,<10",
 ]
 

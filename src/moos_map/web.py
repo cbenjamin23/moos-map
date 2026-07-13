@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import __version__
-from .errors import MoosMapError
+from .errors import MoosMapError, ValidationError
 from .models import Bounds, MapRequest, Origin
 from .service import build_map, plan_map
 from .sources import list_sources
@@ -37,12 +37,14 @@ class OriginPayload(BaseModel):
 class MapPayload(BaseModel):
     bounds: BoundsPayload
     origin: OriginPayload
-    zoom: int = Field(default=20, ge=0, le=30)
-    source_id: str = "google-satellite"
+    zoom: int = Field(default=17, ge=0, le=30)
+    source_id: str = "esri-world-imagery"
     name: str = "moos_map"
     output_dir: str = "~/moos-maps"
-    emit_moos: bool = False
+    emit_moos: bool = True
     force: bool = False
+    overwrite: bool = True
+    refresh_tiles: bool = False
     custom_url_template: str | None = None
     accept_custom_source_terms: bool = False
     mbtiles_path: str | None = None
@@ -59,6 +61,8 @@ class MapPayload(BaseModel):
             output_dir=Path(self.output_dir),
             emit_moos=self.emit_moos,
             force=self.force,
+            overwrite=self.overwrite,
+            refresh_tiles=self.refresh_tiles,
             custom_url_template=self.custom_url_template or None,
             accept_custom_source_terms=self.accept_custom_source_terms,
             mbtiles_path=Path(self.mbtiles_path) if self.mbtiles_path else None,
@@ -72,7 +76,15 @@ class VerifyPayload(BaseModel):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="MOOS Map", version=__version__, docs_url="/api/docs")
+    app = FastAPI(title="MOOS Map Builder", version=__version__, docs_url="/api/docs")
+
+    @app.middleware("http")
+    async def prevent_stale_local_ui(request: Request, call_next: Any) -> Response:
+        response = await call_next(request)
+        if request.url.path == "/" or request.url.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "no-store, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+        return response
 
     @app.exception_handler(MoosMapError)
     async def handle_moos_map_error(
@@ -95,6 +107,8 @@ def create_app() -> FastAPI:
 
     @app.post("/api/build")
     def build(payload: MapPayload) -> dict[str, Any]:
+        if not payload.output_dir.strip():
+            raise ValidationError("Choose an output directory before building the map")
         return build_map(payload.to_request()).as_dict()
 
     @app.post("/api/verify")

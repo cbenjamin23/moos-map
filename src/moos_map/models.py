@@ -134,17 +134,31 @@ class PixelWindow:
 class MapRequest:
     bounds: Bounds
     origin: Origin
-    zoom: int
-    source_id: str = "google-satellite"
+    zoom: int = 17
+    source_id: str = "esri-world-imagery"
     name: str = "moos_map"
     output_dir: Path = field(default_factory=lambda: Path.home() / "moos-maps")
-    emit_moos: bool = False
+    emit_moos: bool = True
     force: bool = False
+    overwrite: bool = True
+    refresh_tiles: bool = False
     custom_url_template: str | None = None
     accept_custom_source_terms: bool = False
     mbtiles_path: Path | None = None
     max_tiles: int = 1024
     max_pixels: int = 67_108_864
+
+    @property
+    def overwrite_outputs(self) -> bool:
+        """Whether an existing output bundle may be replaced."""
+
+        return self.force or self.overwrite
+
+    @property
+    def refresh_source_tiles(self) -> bool:
+        """Whether tile providers should bypass reusable local cache entries."""
+
+        return self.force or self.refresh_tiles
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,6 +191,12 @@ class MapPlan:
     def pixel_count(self) -> int:
         return self.pixel_width * self.pixel_height
 
+    @property
+    def estimated_tiff_size_bytes(self) -> int:
+        """Return a simple pre-build RGB estimate for the output TIFF size."""
+
+        return self.pixel_count * 3
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "source": self.source,
@@ -190,6 +210,7 @@ class MapPlan:
             "pixel_width": self.pixel_width,
             "pixel_height": self.pixel_height,
             "pixel_count": self.pixel_count,
+            "estimated_tiff_size_bytes": self.estimated_tiff_size_bytes,
             "approximate_meters_per_pixel": self.approximate_meters_per_pixel,
             "approximate_ground_width_m": self.approximate_ground_width_m,
             "approximate_ground_height_m": self.approximate_ground_height_m,

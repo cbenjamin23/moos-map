@@ -18,9 +18,11 @@ class FakeProvider:
         self.cache_hits = 0
         self.downloaded_tiles = 0
         self.closed = False
+        self.force_values: list[bool] = []
 
     def fetch(self, zoom: int, x: int, y: int, *, force: bool = False) -> bytes:
-        del zoom, force
+        del zoom
+        self.force_values.append(force)
         self.downloaded_tiles += 1
         colors = {
             (19826, 24239): (255, 0, 0),
@@ -45,7 +47,6 @@ def local_request(tmp_path: Path, **overrides: object) -> MapRequest:
         "source_id": "google-satellite",
         "name": "harbor",
         "output_dir": tmp_path,
-        "emit_moos": True,
     }
     values.update(overrides)
     return MapRequest(**values)  # type: ignore[arg-type]
@@ -56,11 +57,14 @@ def test_build_creates_one_tile_aligned_moos_bundle(tmp_path: Path) -> None:
 
     result = build_map(local_request(tmp_path), provider=provider)
 
-    assert result.tiff_path == tmp_path / "harbor.tif"
-    assert result.info_path == tmp_path / "harbor.info"
-    assert result.moos_path == tmp_path / "harbor.moos"
-    assert not (tmp_path / "harbor.json").exists()
+    assert result.tiff_path == tmp_path / "harbor" / "harbor.tif"
+    assert result.info_path == tmp_path / "harbor" / "harbor.info"
+    assert result.moos_path == tmp_path / "harbor" / "harbor.moos"
+    assert not (tmp_path / "harbor" / "harbor.json").exists()
     assert result.verification["ok"] is True
+    assert result.verification["details"]["file_size_bytes"] == (
+        result.tiff_path.stat().st_size
+    )
     assert result.plan.pixel_width == 512
     assert result.plan.pixel_height == 512
     assert provider.downloaded_tiles == 4
@@ -85,12 +89,22 @@ def test_build_creates_one_tile_aligned_moos_bundle(tmp_path: Path) -> None:
     assert info.origin == Origin(latitude=42.36, longitude=-71.087)
 
 
-def test_existing_output_requires_force(tmp_path: Path) -> None:
+def test_existing_output_is_replaced_by_default(tmp_path: Path) -> None:
     request = local_request(tmp_path)
     build_map(request, provider=FakeProvider())
+    replacement = FakeProvider()
 
-    with pytest.raises(ValidationError, match="Output already exists"):
-        build_map(request, provider=FakeProvider())
+    result = build_map(request, provider=replacement)
+
+    assert result.verification["ok"] is True
+    assert replacement.downloaded_tiles == 4
+
+
+def test_existing_output_can_be_protected(tmp_path: Path) -> None:
+    build_map(local_request(tmp_path), provider=FakeProvider())
+
+    with pytest.raises(ValidationError, match="Output protection is enabled"):
+        build_map(local_request(tmp_path, overwrite=False), provider=FakeProvider())
 
 
 def test_failed_force_build_preserves_existing_bundle(
@@ -113,6 +127,23 @@ def test_failed_force_build_preserves_existing_bundle(
 
     assert original.tiff_path.read_bytes() == original_tiff
     assert original.info_path.read_bytes() == original_info
+
+
+def test_default_overwrite_does_not_refresh_tiles(tmp_path: Path) -> None:
+    build_map(local_request(tmp_path), provider=FakeProvider())
+
+    overwrite_provider = FakeProvider()
+    build_map(local_request(tmp_path), provider=overwrite_provider)
+    assert overwrite_provider.force_values
+    assert not any(overwrite_provider.force_values)
+
+    refresh_provider = FakeProvider()
+    build_map(
+        local_request(tmp_path, name="fresh_tiles", refresh_tiles=True),
+        provider=refresh_provider,
+    )
+    assert refresh_provider.force_values
+    assert all(refresh_provider.force_values)
 
 
 def test_preview_only_source_cannot_build(tmp_path: Path) -> None:
@@ -149,6 +180,16 @@ def test_build_crops_to_exact_requested_bounds(tmp_path: Path) -> None:
     assert info.bounds.south == pytest.approx(requested.south, abs=1e-10)
     assert info.bounds.east == pytest.approx(requested.east, abs=1e-10)
     assert info.bounds.north == pytest.approx(requested.north, abs=1e-10)
+
+
+def test_output_directory_is_validated_only_when_building(tmp_path: Path) -> None:
+    invalid_output = tmp_path / "not-a-directory"
+    invalid_output.write_text("file", encoding="utf-8")
+    request = local_request(tmp_path, output_dir=invalid_output)
+
+    assert plan_map(request).pixel_width == 512
+    with pytest.raises(ValidationError, match="Output directory is not a directory"):
+        build_map(request, provider=FakeProvider())
 
 
 def test_outside_origin_is_allowed_with_warning(tmp_path: Path) -> None:

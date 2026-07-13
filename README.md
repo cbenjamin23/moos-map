@@ -1,153 +1,112 @@
-# MOOS Map
+# MOOS Map Builder
 
-MOOS Map builds exact-crop TIFF background maps for MOOS-IvP. It has a
-shared Python core, a command-line interface, and a local browser interface.
-Both interfaces plan and build maps through the same source, geometry,
-acquisition, raster, and MOOS compatibility modules.
+Build cropped TIFF background maps for MOOS-IvP through a local browser UI or
+the `moos-map` command. Both interfaces use the same map sources, crop logic,
+cache, and MOOS compatibility checks.
 
-The output bundle is intentionally small:
+## Install
 
-```text
-harbor.tif
-harbor.info
-```
-
-An optional `harbor.moos` snippet can also be requested. No JSON sidecar is
-created. Source and requested-bound provenance is stored as `//` comments in
-the `.info`, where pMarineViewer safely ignores it.
-
-## Install for development
-
-MOOS Map requires Python 3.11 or newer.
+MOOS Map requires Python 3.11 or newer. Install the command in its own managed
+environment with [pipx](https://pipx.pypa.io/):
 
 ```sh
-cd ~/moos-map
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e '.[test]'
+pipx install git+https://github.com/cbenjamin23/moos-map.git
 ```
 
-## Local browser UI
+Then launch the UI:
 
 ```sh
 moos-map ui
 ```
 
-The UI opens on `http://127.0.0.1:8765`. Click once to set the first corner,
-move the pointer, and click the opposite corner to finish the region. A new
-first click immediately starts replacing the prior selection. Click-hold-drag
-pans the map; the wheel and map controls zoom it. Source, zoom, and selection
-changes update the summary automatically; there is no separate plan step.
-Advanced MOOS origin controls live in the persistent Placement drawer.
+## UI
+
+Click any two diagonally opposite corners to select a region. Click-hold-drag
+pans the map; another single click starts a replacement selection. Review the
+summary and choose **Build Map**.
+
+Esri World Imagery and zoom 17 are the defaults. The origin defaults to the
+map center. For an existing mission, open **04 Advanced placement** and enter
+its `LatOrigin` and `LongOrigin`, or drag the red origin dot.
 
 ## CLI
 
-List the source registry:
-
-```sh
-moos-map sources
-```
-
-Inspect a plan without downloading:
-
-```sh
-moos-map plan \
-  --bounds -71.088 42.358 -71.087 42.359 \
-  --origin 42.3585 -71.0875 \
-  --zoom 20 \
-  --source google-satellite
-```
-
-Build it:
+Build with the same defaults by supplying any two diagonal corners as
+`latitude longitude` pairs:
 
 ```sh
 moos-map build \
-  --bounds -71.088 42.358 -71.087 42.359 \
-  --origin 42.3585 -71.0875 \
-  --zoom 20 \
-  --source google-satellite \
-  --name harbor \
-  --output-dir ~/moos-maps \
-  --emit-moos
+  --corners 42.358 -71.088 42.359 -71.087 \
+  --name harbor
 ```
 
-Verify any same-basename TIFF/info pair:
+For an existing mission, supply its origin:
 
 ```sh
-moos-map verify ~/moos-maps/harbor.tif
+moos-map build \
+  --corners 42.358 -71.088 42.359 -71.087 \
+  --origin 42.358436 -71.087448 \
+  --name harbor
 ```
 
-Add `--json` to `sources`, `plan`, `build`, or `verify` for machine-readable
-stdout. Progress remains on stderr.
-
-## Exact cropping
-
-Remote services divide imagery into 256-by-256-pixel source tiles. MOOS Map
-downloads every tile touched by the requested rectangle, stitches them in
-memory, and performs a fractional-pixel resample to the exact requested
-bounds. The extra source-tile margins are discarded. The `.info` therefore
-records the UI-selected or CLI-requested bounds exactly.
-
-The summary estimates the residual placement error caused by pMarineViewer's
-affine raster mapping. Current `BackImg` derives an unrotated rectangle from
-diagonal UTM corner differences; exact cropping reduces the affected area but
-does not rotate imagery into the UTM grid.
-
-## Mission origin versus image center
-
-The mission origin (`LatOrigin`/`LongOrigin`) is the geographic point that
-MOOS calls local `(0, 0)`. It is not the center of the image. The image center
-is simply halfway between the `.info` bounds and may have any local XY value.
-MOOS Map writes the mission origin as `datum_lat`/`datum_lon`; it may be
-outside the TIFF as long as it matches the mission configuration and remains
-in the same UTM zone as the map.
-
-## Sources and offline data
-
-Built-in export sources:
-
-- `google-satellite` — highest-detail default, confirmed through zoom 22 at MIT.
-- `google-hybrid` — Google satellite imagery with labels, through zoom 22.
-- `google-maps` — detailed Google street map, through zoom 22 at MIT.
-- `google-terrain-hybrid` — Google terrain-oriented map with labels.
-- `esri-world-imagery` — the satellite source used by Ray, through zoom 21 at MIT.
-- `esri-world-street` — detailed Esri street map, through zoom 19 at MIT.
-- `esri-world-topo` — detailed Esri topographic map, through zoom 19 at MIT.
-- `esri-ocean` — the ocean/bathymetry layer used by Ray, through zoom 16.
-- Local MBTiles archives supplied by the user.
-
-The built-ins are now the useful Google and Esri options from Anaxi and Ray's
-prototype. The lower-detail USGS sources from v0.1 and OpenStreetMap Standard
-are no longer built in; they remain possible through a custom XYZ URL.
-Native detail varies geographically. A custom XYZ source can be used with
-`--url-template` after `--accept-source-terms` confirms access.
-
-The tile cache is stored under `${XDG_CACHE_HOME:-~/.cache}/moos-map/tiles`.
-
-## Current scope
-
-- One active background bundle per build. Multiple-background orchestration is
-  deferred while the upstream pMarineViewer texture allocation issue is fixed.
-- Exact geographic crop is implemented; full UTM rotation/reprojection is not.
-- Antimeridian and UTM-zone-crossing maps are rejected.
-- TIFF and `.info` are required; `.moos` is optional.
-- TIFF filenames use lowercase `.tif` and no whitespace.
-- Coding-agent skill integration is the final roadmap phase, after the UI and
-  CLI behavior settle.
-
-See [docs/architecture.md](docs/architecture.md) for module boundaries and the
-roadmap.
-
-## Tests
+Useful commands:
 
 ```sh
+moos-map sources
+moos-map plan --corners 42.358 -71.088 42.359 -71.087
+moos-map verify ~/moos-maps/harbor/harbor.tif
+moos-map build -h
+```
+
+`build` downloads immediately; running `sources` or `plan` first is optional.
+Use `--zoom`, `--source`, or `--output-dir` to override defaults. Builds include
+a `.moos` snippet and replace same-named bundles safely by default. See
+`moos-map build -h` for opt-out and cache controls.
+
+## Output
+
+Each map gets its own directory:
+
+```text
+~/moos-maps/harbor/
+├── harbor.tif
+├── harbor.info
+└── harbor.moos
+```
+
+Copy the `.tif` and `.info` files into a mission directory, or add that exact
+map directory to `IVP_IMAGE_DIRS`. Then add the generated `harbor.moos` settings
+to the mission. pMarineViewer does not recursively search `~/moos-maps`.
+
+The TIFF is cropped to the selected coordinates; extra downloaded tile margins
+are discarded. Source and requested-bound provenance is kept as ignored `//`
+comments in the `.info`; no JSON sidecar is created.
+
+## Sources
+
+Built-ins include Esri World Imagery, Google Satellite, Google Hybrid, Google
+Maps, and Esri World Topographic. Local MBTiles and custom XYZ services are
+also supported. Native detail varies by location. A listed provider is not a
+grant of export rights; check its current terms before downloading hosted
+imagery.
+
+The tile cache is `${XDG_CACHE_HOME:-~/.cache}/moos-map/tiles`.
+
+## Development
+
+```sh
+git clone https://github.com/cbenjamin23/moos-map.git
+cd moos-map
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e '.[test]'
 python -m pytest
 ```
 
-The test suite covers tile rounding, placement metadata, source policy, HTTP
-cache behavior, MBTiles Y-axis conversion, raster stitching, bundle creation,
-and the local API.
+See [docs/architecture.md](docs/architecture.md) for module boundaries,
+[docs/validation.md](docs/validation.md) for the MIT pMarineViewer comparison,
+and [TODO.md](TODO.md) for deferred work.
 
 ## License
 
-No license has been selected yet.
+GPL-3.0-only. See [LICENSE](LICENSE).
