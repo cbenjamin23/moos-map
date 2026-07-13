@@ -28,8 +28,8 @@ UI  ─┘           ├> source registry
 - `cache.py`: atomic, source-isolated HTTP tile cache.
 - `raster.py`: deterministic row-major tile stitching, exact fractional-pixel
   resampling, and atomic RGB TIFF output.
-- `moos_files.py`: strict six-key `.info` parsing/writing and optional mission
-  snippets.
+- `moos_files.py`: strict six-key `.info` parsing/writing and default,
+  opt-out mission snippets.
 - `verification.py`: independent bundle checks before returning success.
 - `service.py`: planning/build orchestration and resource limits.
 - `cli.py`: command-line adapter.
@@ -53,6 +53,10 @@ All provenance is commented with `//`. This follows the current pMarineViewer
 loader, which rejects unknown active `.info` keys and does not use GeoTIFF
 georeferencing tags in place of the sidecar.
 
+Each build is placed in its own map-name directory. The default bundle contains
+the required same-basename `.tif`/`.info` pair and a copy-ready `.moos` mission
+snippet; either interface may omit the snippet.
+
 ## Build sequence
 
 1. Shared core and source registry.
@@ -63,6 +67,6 @@ georeferencing tags in place of the sidecar.
 6. Curated source cleanup and UI/CLI workflow polish. (Complete in v0.5.)
 7. Multiple-background workflows after the pMarineViewer texture allocation
    defect is handled.
-8. UTM background-display correction as the final compatibility milestone;
-   navigation math is unaffected, but this is required before precision use.
+8. Empirical landmark/mission-track validation of the theoretical UTM display
+   alignment estimate, followed by generator-side correction only if needed.
 9. Coding-agent skill, last, once the stable UI/CLI workflow is known.

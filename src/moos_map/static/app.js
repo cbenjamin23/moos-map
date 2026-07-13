@@ -416,7 +416,7 @@
     if (!state.bounds) return;
     const button = $("build-button");
     button.disabled = true;
-    button.textContent = "Building exact crop…";
+    button.textContent = "Building map…";
     try {
       const plan = state.plan || await refreshSummary();
       if (!plan) return;
@@ -430,7 +430,7 @@
       showError(error);
     } finally {
       button.disabled = !state.plan || !state.plan.source.export_allowed;
-      button.textContent = "Build exact crop";
+      button.textContent = "Build Map";
     }
   }
 
@@ -439,7 +439,7 @@
       ? `<ul class="warnings">${plan.warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul>`
       : "";
     const success = build
-      ? '<div class="success">Exact crop built and verified successfully.</div>'
+      ? '<div class="success">Map built and verified successfully.</div>'
       : "";
     const paths = build ? `<ul class="paths">
       <li>TIFF: <code>${escapeHtml(build.tiff_path)}</code></li>
@@ -447,13 +447,20 @@
       ${build.moos_path ? `<li>MOOS: <code>${escapeHtml(build.moos_path)}</code></li>` : ""}
       <li>${build.downloaded_tiles} downloaded, ${build.cache_hits} from cache</li>
     </ul>` : "";
+    const actualTiffBytes = build?.verification?.details?.file_size_bytes;
+    const tiffSizeBytes = actualTiffBytes ?? plan.estimated_tiff_size_bytes;
+    const tiffSizeLabel = actualTiffBytes ? "TIFF file size" : "Estimated TIFF size";
+    const tiffSizeValue = `${actualTiffBytes ? "" : "≈"}${formatFileSize(tiffSizeBytes, Boolean(actualTiffBytes))}`;
+    const tiffSizeTip = actualTiffBytes
+      ? `Exact on-disk size of the completed LZW-compressed TIFF: ${actualTiffBytes.toLocaleString()} bytes.`
+      : "A rough pre-build estimate based on three RGB bytes per output pixel. The completed LZW-compressed TIFF may be smaller or larger depending on the imagery.";
     return `${success}<div class="summary-metrics">
       ${metric("Exact TIFF crop", `${plan.pixel_width.toLocaleString()} × ${plan.pixel_height.toLocaleString()} px`, "The TIFF is resampled to the exact selected bounds; extra source-tile margins are discarded.")}
-      ${metric("Source tiles", `${plan.tiles.count} (${plan.tiles.columns} × ${plan.tiles.rows})`, "The complete source tiles intersecting the selection are downloaded, then cropped to the exact selected bounds. Tiles are cached for reuse.")}
+      ${metric(tiffSizeLabel, tiffSizeValue, tiffSizeTip)}
       ${metric("Source resolution", `${plan.approximate_meters_per_pixel.toFixed(3)} m/px`, "Nominal Web Mercator ground resolution at the selected latitude and export zoom.")}
       ${metric("Ground area", `${formatMeters(plan.approximate_ground_width_m)} × ${formatMeters(plan.approximate_ground_height_m)}`, "Approximate geographic width and height of the exact selected bounds.")}
-      ${metric("Viewer size", `${formatMeters(plan.pmarineviewer_width_m)} × ${formatMeters(plan.pmarineviewer_height_m)}`, "Dimensions current pMarineViewer is expected to assign to the image using its UTM corner calculation.")}
-      ${metric("Display alignment", `${plan.estimated_max_requested_area_position_error_m.toFixed(1)} m max`, "Known pMarineViewer background-display limitation: sampled difference between true MOOS UTM coordinates and the viewer's affine image placement. It does not change mission navigation or local XY coordinates.")}
+      ${metric("Source tiles", `${plan.tiles.count} (${plan.tiles.columns} × ${plan.tiles.rows})`, "The complete source tiles intersecting the selection are downloaded, then cropped to the exact selected bounds. Tiles are cached for reuse.")}
+      ${metric("Display alignment", `${plan.estimated_max_requested_area_position_error_m.toFixed(1)} m model max`, "A theoretical worst-case comparison between the TIFF's affine placement and MOOS UTM coordinates inside the selection. It is not a measured image-registration error, and it does not change mission navigation or local XY coordinates.")}
     </div>
     <p class="summary-bounds">W ${plan.actual_bounds.west.toFixed(8)} · S ${plan.actual_bounds.south.toFixed(8)} · E ${plan.actual_bounds.east.toFixed(8)} · N ${plan.actual_bounds.north.toFixed(8)}</p>
     ${warnings}${paths}`;
@@ -481,6 +488,12 @@
 
   function formatMeters(value) {
     return value >= 1000 ? `${(value / 1000).toFixed(2)} km` : `${value.toFixed(0)} m`;
+  }
+
+  function formatFileSize(bytes, precise = false) {
+    if (bytes < 1_000) return `${bytes.toLocaleString()} bytes`;
+    if (bytes < 1_000_000) return `${(bytes / 1_000).toFixed(precise ? 1 : 0)} KB`;
+    return `${(bytes / 1_000_000).toFixed(precise ? 2 : bytes < 10_000_000 ? 1 : 0)} MB`;
   }
 
   function escapeHtml(value) {
@@ -528,7 +541,7 @@
   $("map-form").addEventListener("submit", buildMap);
 
   for (const id of ["corner-north", "corner-west", "corner-south", "corner-east"]) {
-    $(id).addEventListener("change", applyCornerInputs);
+    $(id).addEventListener("input", applyCornerInputs);
   }
   $("auto-origin").addEventListener("change", () => {
     const automatic = $("auto-origin").checked;

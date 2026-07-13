@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import __version__
-from .errors import MoosMapError
+from .errors import MoosMapError, ValidationError
 from .models import Bounds, MapRequest, Origin
 from .service import build_map, plan_map
 from .sources import list_sources
@@ -41,7 +41,7 @@ class MapPayload(BaseModel):
     source_id: str = "google-satellite"
     name: str = "moos_map"
     output_dir: str = "~/moos-maps"
-    emit_moos: bool = False
+    emit_moos: bool = True
     force: bool = False
     overwrite: bool = True
     refresh_tiles: bool = False
@@ -78,6 +78,14 @@ class VerifyPayload(BaseModel):
 def create_app() -> FastAPI:
     app = FastAPI(title="MOOS Map", version=__version__, docs_url="/api/docs")
 
+    @app.middleware("http")
+    async def prevent_stale_local_ui(request: Request, call_next: Any) -> Response:
+        response = await call_next(request)
+        if request.url.path == "/" or request.url.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "no-store, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+        return response
+
     @app.exception_handler(MoosMapError)
     async def handle_moos_map_error(
         request: Request, exc: MoosMapError
@@ -99,6 +107,8 @@ def create_app() -> FastAPI:
 
     @app.post("/api/build")
     def build(payload: MapPayload) -> dict[str, Any]:
+        if not payload.output_dir.strip():
+            raise ValidationError("Choose an output directory before building the map")
         return build_map(payload.to_request()).as_dict()
 
     @app.post("/api/verify")

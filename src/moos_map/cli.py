@@ -78,7 +78,7 @@ def _request_from_args(args: argparse.Namespace) -> MapRequest:
         source_id=args.source,
         name=getattr(args, "name", "moos_map"),
         output_dir=getattr(args, "output_dir", Path.home() / "moos-maps"),
-        emit_moos=getattr(args, "emit_moos", False),
+        emit_moos=getattr(args, "emit_moos", True),
         force=getattr(args, "force", False),
         overwrite=getattr(args, "overwrite", True),
         refresh_tiles=getattr(args, "refresh_tiles", False),
@@ -90,54 +90,59 @@ def _request_from_args(args: argparse.Namespace) -> MapRequest:
     )
 
 
-def _print_plan_human(plan: dict[str, Any]) -> None:
+def _format_file_size(size_bytes: int, *, precise: bool = False) -> str:
+    if size_bytes < 1_000:
+        return f"{size_bytes:,} bytes"
+    if size_bytes < 1_000_000:
+        return f"{size_bytes / 1_000:.{1 if precise else 0}f} KB"
+    return f"{size_bytes / 1_000_000:.{2 if precise else 1}f} MB"
+
+
+def _print_plan_human(
+    plan: dict[str, Any], *, actual_tiff_size_bytes: int | None = None
+) -> None:
     source = plan["source"]
     tiles = plan["tiles"]
     actual = plan["actual_bounds"]
-    download = plan["download_bounds"]
+    origin = plan["origin"]
     print(f"Source: {source['name']} ({source['id']})")
     print(
-        f"Tiles: {tiles['count']} "
-        f"({tiles['columns']} columns x {tiles['rows']} rows), zoom {tiles['zoom']}"
+        f"Source tiles: {tiles['count']} "
+        f"({tiles['columns']} x {tiles['rows']}), zoom {tiles['zoom']}"
     )
-    print(f"Image: {plan['pixel_width']} x {plan['pixel_height']} pixels")
+    print(f"TIFF dimensions: {plan['pixel_width']} x {plan['pixel_height']} pixels")
+    if actual_tiff_size_bytes is None:
+        print(
+            "Estimated TIFF size: "
+            f"~{_format_file_size(plan['estimated_tiff_size_bytes'])} "
+            "before content-dependent LZW compression"
+        )
+    else:
+        print(
+            "TIFF file size: "
+            f"{_format_file_size(actual_tiff_size_bytes, precise=True)} "
+            f"({actual_tiff_size_bytes:,} bytes)"
+        )
     print(
-        "Actual bounds: "
+        "Exact bounds: "
         f"W {actual['west']:.10f}, S {actual['south']:.10f}, "
         f"E {actual['east']:.10f}, N {actual['north']:.10f}"
     )
     print(
-        "Downloaded tile bounds: "
-        f"W {download['west']:.10f}, S {download['south']:.10f}, "
-        f"E {download['east']:.10f}, N {download['north']:.10f}"
+        "Mission origin: "
+        f"LatOrigin {origin['latitude']:.10f}, "
+        f"LongOrigin {origin['longitude']:.10f}"
     )
     print(
-        "Approximate ground size: "
+        "Ground area: "
         f"{plan['approximate_ground_width_m']:.1f} x "
         f"{plan['approximate_ground_height_m']:.1f} m"
     )
+    print(f"Source resolution: {plan['approximate_meters_per_pixel']:.3f} m/pixel")
     print(
-        "Expected pMarineViewer size: "
-        f"{plan['pmarineviewer_width_m']:.1f} x "
-        f"{plan['pmarineviewer_height_m']:.1f} m"
-    )
-    print(
-        "Image center in mission local XY: "
-        f"({plan['image_center_local_x_m']:.1f}, "
-        f"{plan['image_center_local_y_m']:.1f}) m"
-    )
-    print(f"Approximate resolution: {plan['approximate_meters_per_pixel']:.3f} m/pixel")
-    print(
-        "Estimated maximum vertical mapping error: "
-        f"{plan['estimated_max_vertical_mapping_error_m']:.3f} m"
-    )
-    print(
-        "Estimated maximum placement error in requested area: "
-        f"{plan['estimated_max_requested_area_position_error_m']:.1f} m"
-    )
-    print(
-        "Estimated maximum placement error across full TIFF: "
-        f"{plan['estimated_max_pmarineviewer_position_error_m']:.1f} m"
+        "Display alignment: "
+        f"{plan['estimated_max_requested_area_position_error_m']:.1f} m model max "
+        "(theoretical, not measured)"
     )
     print("Output crop: exact requested bounds")
     for warning in plan["warnings"]:
@@ -175,7 +180,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output directory (default: ~/moos-maps)",
     )
     build_command.add_argument(
-        "--emit-moos", action="store_true", help="Write an optional .moos snippet"
+        "--no-moos",
+        dest="emit_moos",
+        action="store_false",
+        default=True,
+        help="Do not write the default .moos mission snippet",
+    )
+    build_command.add_argument(
+        "--emit-moos",
+        dest="emit_moos",
+        action="store_true",
+        help=argparse.SUPPRESS,
     )
     build_command.add_argument(
         "--no-overwrite",
@@ -253,7 +268,12 @@ def run(args: argparse.Namespace) -> int:
         if args.json:
             _json_print(payload)
         else:
-            _print_plan_human(payload["plan"])
+            _print_plan_human(
+                payload["plan"],
+                actual_tiff_size_bytes=payload["verification"]["details"][
+                    "file_size_bytes"
+                ],
+            )
             print(f"TIFF: {payload['tiff_path']}")
             print(f"Info: {payload['info_path']}")
             if payload["moos_path"]:
@@ -273,6 +293,19 @@ def run(args: argparse.Namespace) -> int:
             print("PASS" if report.ok else "FAIL")
             print(f"TIFF: {report.tiff_path}")
             print(f"Info: {report.info_path}")
+            if "pixel_width" in report.details:
+                print(
+                    "Image: "
+                    f"{report.details['pixel_width']} x "
+                    f"{report.details['pixel_height']} pixels, "
+                    f"{report.details['mode']} {report.details['format']}"
+                )
+                size_bytes = report.details["file_size_bytes"]
+                print(
+                    "TIFF file size: "
+                    f"{_format_file_size(size_bytes, precise=True)} "
+                    f"({size_bytes:,} bytes)"
+                )
             for warning in report.warnings:
                 print(f"Warning: {warning}")
             for error in report.errors:
