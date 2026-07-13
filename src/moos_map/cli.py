@@ -42,7 +42,7 @@ def _add_map_arguments(parser: argparse.ArgumentParser) -> None:
         help="MOOS LatOrigin and LongOrigin",
     )
     parser.add_argument(
-        "--zoom", type=int, default=20, help="XYZ zoom level (default: 20)"
+        "--zoom", type=int, default=17, help="XYZ zoom level (default: 17)"
     )
     parser.add_argument(
         "--source",
