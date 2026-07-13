@@ -38,7 +38,7 @@ move the pointer, and click the opposite corner to finish the region. A new
 first click immediately starts replacing the prior selection. Click-hold-drag
 pans the map; the wheel and map controls zoom it. Source, zoom, and selection
 changes update the summary automatically; there is no separate plan step.
-The collapsed Advanced placement section below Summary exposes editable map
+The collapsed section 04, Advanced placement, exposes editable map
 corners and an optional existing-mission origin override. Export zoom defaults
 to 17 in both the UI and CLI; it remains adjustable up to each source's limit.
 
@@ -72,6 +72,10 @@ moos-map build \
   --output-dir ~/moos-maps \
   --emit-moos
 ```
+
+Use `--overwrite` only to replace an existing same-name output bundle. Use
+`--refresh-tiles` only to bypass the local imagery cache and download fresh
+source tiles. They are independent options.
 
 Verify any same-basename TIFF/info pair:
 
@@ -119,7 +123,13 @@ Built-in export sources:
 - `esri-world-street` — detailed Esri street map, through zoom 19 at MIT.
 - `esri-world-topo` — detailed Esri topographic map, through zoom 19 at MIT.
 - `esri-ocean` — the ocean/bathymetry layer used by Ray, through zoom 16.
+- `noaa-chart-display` — NOAA nautical-chart portrayal for U.S. waters,
+  through online zoom 16.
 - Local MBTiles archives supplied by the user.
+
+NOAA also publishes regional chart MBTiles. Downloaded packages can be selected
+through the existing Local MBTiles source when offline or region-specific chart
+coverage is preferred.
 
 The built-ins are now the useful Google and Esri options from Anaxi and Ray's
 prototype. The lower-detail USGS sources from v0.1 and OpenStreetMap Standard
