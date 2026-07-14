@@ -4,6 +4,8 @@ Build cropped TIFF background maps for MOOS-IvP through a local browser UI or
 the `moos-map` command. Both interfaces use the same map sources, crop logic,
 cache, and MOOS compatibility checks.
 
+[PyPI Project](https://pypi.org/project/moos-map/)
+
 ## Install
 
 MOOS Map requires Python 3.11 or newer and [pipx](https://pipx.pypa.io/). On
