@@ -6,13 +6,14 @@ from pathlib import Path
 from typing import Any
 
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import __version__
 from .errors import MoosMapError, ValidationError
+from .geocoding import GeocodingError, search_locations
 from .models import Bounds, MapRequest, Origin
 from .service import build_map, plan_map
 from .sources import list_sources
@@ -93,6 +94,13 @@ def create_app() -> FastAPI:
         del request
         return JSONResponse(status_code=400, content={"error": str(exc)})
 
+    @app.exception_handler(GeocodingError)
+    async def handle_geocoding_error(
+        request: Request, exc: GeocodingError
+    ) -> JSONResponse:
+        del request
+        return JSONResponse(status_code=502, content={"error": str(exc)})
+
     @app.get("/api/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
@@ -100,6 +108,26 @@ def create_app() -> FastAPI:
     @app.get("/api/sources")
     def sources() -> dict[str, Any]:
         return {"sources": [source.as_dict() for source in list_sources()]}
+
+    @app.get("/api/search")
+    def search(
+        q: str = Query(min_length=3, max_length=200),
+        latitude: float | None = Query(default=None, ge=-90, le=90),
+        longitude: float | None = Query(default=None, ge=-180, le=180),
+        zoom: int = Query(default=12, ge=0, le=24),
+        limit: int = Query(default=5, ge=1, le=10),
+    ) -> dict[str, Any]:
+        results = search_locations(
+            q,
+            latitude=latitude,
+            longitude=longitude,
+            zoom=zoom,
+            limit=limit,
+        )
+        return {
+            "results": [result.as_dict() for result in results],
+            "attribution": "Search data © OpenStreetMap contributors, powered by Photon",
+        }
 
     @app.post("/api/plan")
     def plan(payload: MapPayload) -> dict[str, Any]:

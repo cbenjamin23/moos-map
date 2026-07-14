@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from moos_map.geocoding import GeocodingError, SearchBounds, SearchResult
 from moos_map.web import app
 
 
@@ -27,14 +28,71 @@ def test_health_and_static_app_load() -> None:
     assert 'id="force"' not in response.text
     assert "Build Map" in response.text
     assert "Build exact crop" not in response.text
+    assert 'id="location-search-form"' in response.text
+    assert 'id="location-results"' in response.text
+    assert "Find a place or enter lat, lon" in response.text
+    assert "OpenStreetMap contributors" in response.text
     app_script = client.get("/static/app.js").text
     assert "draggable: true" in app_script
     assert 'addEventListener("input", applyCornerInputs)' in app_script
     assert "const MIT_SAILING_PAVILION = [42.358436, -71.087448];" in app_script
-    assert "const INITIAL_MAP_ZOOM = 17;" in app_script
+    assert "const INITIAL_MAP_ZOOM = 15;" in app_script
     assert ".setView(MIT_SAILING_PAVILION, INITIAL_MAP_ZOOM);" in app_script
     assert client.get("/static/app.js").headers["cache-control"] == "no-store, max-age=0"
     assert "placement-drawer" not in response.text
+
+
+def test_search_api_returns_normalized_results(monkeypatch) -> None:
+    def fake_search(query, **options):
+        assert query == "Monterey Bay"
+        assert options == {
+            "latitude": 36.8,
+            "longitude": -121.9,
+            "zoom": 11,
+            "limit": 5,
+        }
+        return [
+            SearchResult(
+                label="Monterey Bay, California, United States",
+                latitude=36.8,
+                longitude=-121.9,
+                bounds=SearchBounds(
+                    west=-122.1,
+                    south=36.5,
+                    east=-121.7,
+                    north=37.0,
+                ),
+            )
+        ]
+
+    monkeypatch.setattr("moos_map.web.search_locations", fake_search)
+    response = client.get(
+        "/api/search",
+        params={
+            "q": "Monterey Bay",
+            "latitude": 36.8,
+            "longitude": -121.9,
+            "zoom": 11,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["results"][0]["label"] == "Monterey Bay, California, United States"
+    assert payload["results"][0]["bounds"]["west"] == -122.1
+    assert "OpenStreetMap contributors" in payload["attribution"]
+
+
+def test_search_api_reports_provider_failures(monkeypatch) -> None:
+    def fail_search(query, **options):
+        del query, options
+        raise GeocodingError("Location search is temporarily unavailable")
+
+    monkeypatch.setattr("moos_map.web.search_locations", fail_search)
+    response = client.get("/api/search", params={"q": "Boston"})
+
+    assert response.status_code == 502
+    assert response.json() == {"error": "Location search is temporarily unavailable"}
 
 
 def test_sources_api_lists_only_the_curated_source_set() -> None:
