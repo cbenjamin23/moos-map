@@ -18,6 +18,29 @@
     <main class="workspace">
       <section class="map-panel" aria-label="Map selection">
         <div id="map"></div>
+        <form id="location-search-form" class="map-search" role="search" autocomplete="off">
+          <label class="visually-hidden" for="location-search">Find a place or coordinates</label>
+          <div class="map-search-row">
+            <input
+              id="location-search"
+              name="q"
+              type="search"
+              placeholder="Find a place or enter lat, lon"
+              aria-autocomplete="list"
+              aria-controls="location-results"
+              aria-expanded="false"
+              spellcheck="false"
+            />
+            <button id="location-search-button" type="submit">Go</button>
+          </div>
+          <div id="location-search-status" class="map-search-status" aria-live="polite" hidden></div>
+          <ul id="location-results" class="location-results" role="listbox" hidden></ul>
+          <p id="location-search-attribution" class="map-search-attribution" hidden>
+            Search data ©
+            <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>,
+            powered by <a href="https://photon.komoot.io/" target="_blank" rel="noopener">Photon</a>
+          </p>
+        </form>
         <div id="map-hint" class="map-hint">
           Click once to start a region. Click-hold-drag pans the map.
         </div>

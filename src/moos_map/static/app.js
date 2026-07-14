@@ -14,10 +14,17 @@
     previousBounds: null,
     planTimer: null,
     planSequence: 0,
+    searchTimer: null,
+    searchSequence: 0,
+    searchResults: [],
+    searchActiveIndex: -1,
+    searchMarker: null,
   };
 
   const MIT_SAILING_PAVILION = [42.358436, -71.087448];
-  const INITIAL_MAP_ZOOM = 17;
+  const INITIAL_MAP_ZOOM = 15;
+  const SEARCH_POINT_ZOOM = 15;
+  const SEARCH_DEBOUNCE_MS = 350;
 
   const map = L.map("map", {
     zoomControl: true,
@@ -34,6 +41,208 @@
 
   function setNumber(id, value) {
     $(id).value = Number(value).toFixed(10).replace(/0+$/, "").replace(/\.$/, "");
+  }
+
+  function parseCoordinates(value) {
+    const numberPattern = "[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)";
+    const match = value.trim().match(new RegExp(
+      `^(${numberPattern})\\s*(?:,\\s*|\\s+)(${numberPattern})$`,
+    ));
+    if (!match) return null;
+    const latitude = Number(match[1]);
+    const longitude = Number(match[2]);
+    if (
+      !Number.isFinite(latitude)
+      || !Number.isFinite(longitude)
+      || latitude < -85.05112878
+      || latitude > 85.05112878
+      || longitude < -180
+      || longitude > 180
+    ) return null;
+    return { latitude, longitude };
+  }
+
+  function coordinateSearchResult(coordinates) {
+    return {
+      label: `${coordinates.latitude.toFixed(6)}, ${coordinates.longitude.toFixed(6)}`,
+      latitude: coordinates.latitude,
+      longitude: coordinates.longitude,
+      bounds: null,
+      coordinate: true,
+    };
+  }
+
+  function setSearchExpanded(expanded) {
+    $("location-search").setAttribute("aria-expanded", String(expanded));
+  }
+
+  function hideSearchPopover() {
+    $("location-results").hidden = true;
+    $("location-search-status").hidden = true;
+    $("location-search-attribution").hidden = true;
+    setSearchExpanded(false);
+    setActiveSearchResult(-1);
+  }
+
+  function resetSearchResults() {
+    state.searchResults = [];
+    state.searchActiveIndex = -1;
+    $("location-results").innerHTML = "";
+    hideSearchPopover();
+  }
+
+  function showSearchStatus(message, { error = false } = {}) {
+    state.searchResults = [];
+    state.searchActiveIndex = -1;
+    $("location-results").hidden = true;
+    $("location-search-attribution").hidden = true;
+    const status = $("location-search-status");
+    status.textContent = message;
+    status.classList.toggle("is-error", error);
+    status.hidden = false;
+    setSearchExpanded(true);
+  }
+
+  function renderSearchResults(results, { showAttribution = true } = {}) {
+    state.searchResults = results;
+    state.searchActiveIndex = -1;
+    $("location-search-status").hidden = true;
+    const list = $("location-results");
+    list.innerHTML = results.map((result, index) => `
+      <li>
+        <button
+          id="location-result-${index}"
+          class="location-result"
+          type="button"
+          role="option"
+          aria-selected="false"
+          data-result-index="${index}"
+        >${escapeHtml(result.label)}</button>
+      </li>
+    `).join("");
+    list.hidden = false;
+    $("location-search-attribution").hidden = !showAttribution;
+    setSearchExpanded(true);
+  }
+
+  function setActiveSearchResult(index) {
+    const buttons = [...document.querySelectorAll(".location-result")];
+    if (!buttons.length || index < 0) index = -1;
+    else index = (index + buttons.length) % buttons.length;
+    state.searchActiveIndex = index;
+    buttons.forEach((button, buttonIndex) => {
+      const active = buttonIndex === index;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+    if (index >= 0) {
+      $("location-search").setAttribute("aria-activedescendant", `location-result-${index}`);
+      buttons[index].scrollIntoView({ block: "nearest" });
+    } else {
+      $("location-search").removeAttribute("aria-activedescendant");
+    }
+  }
+
+  function drawSearchMarker(latitude, longitude) {
+    if (!state.searchMarker) {
+      state.searchMarker = L.marker([latitude, longitude], {
+        bubblingMouseEvents: false,
+        interactive: false,
+        keyboard: false,
+        icon: L.divIcon({
+          className: "search-pin",
+          iconAnchor: [8, 8],
+          iconSize: [16, 16],
+        }),
+      });
+    }
+    if (!map.hasLayer(state.searchMarker)) state.searchMarker.addTo(map);
+    state.searchMarker.setLatLng([latitude, longitude]);
+  }
+
+  function chooseSearchResult(index) {
+    const result = state.searchResults[index];
+    if (!result) return;
+    if (state.selecting) cancelSelection();
+    drawSearchMarker(result.latitude, result.longitude);
+    if (result.bounds) {
+      map.flyToBounds([
+        [result.bounds.south, result.bounds.west],
+        [result.bounds.north, result.bounds.east],
+      ], { padding: [45, 45], maxZoom: SEARCH_POINT_ZOOM, duration: 0.65 });
+    } else {
+      map.flyTo([result.latitude, result.longitude], SEARCH_POINT_ZOOM, { duration: 0.65 });
+    }
+    $("location-search").value = result.label;
+    hideSearchPopover();
+    $("location-search").blur();
+  }
+
+  async function searchLocations(query) {
+    const sequence = ++state.searchSequence;
+    showSearchStatus("Searching…");
+    const center = map.getCenter();
+    const params = new URLSearchParams({
+      q: query,
+      latitude: String(center.lat),
+      longitude: String(center.lng),
+      zoom: String(Math.round(map.getZoom())),
+      limit: "5",
+    });
+    try {
+      const data = await api(`/api/search?${params}`);
+      if (sequence !== state.searchSequence) return null;
+      if (!data.results.length) {
+        showSearchStatus("No matching locations found.");
+        return [];
+      }
+      renderSearchResults(data.results);
+      return data.results;
+    } catch (error) {
+      if (sequence !== state.searchSequence) return null;
+      showSearchStatus(error.message, { error: true });
+      return null;
+    }
+  }
+
+  function scheduleLocationSearch() {
+    clearTimeout(state.searchTimer);
+    state.searchSequence += 1;
+    resetSearchResults();
+    const query = $("location-search").value.trim();
+    if (!query) return;
+    const coordinates = parseCoordinates(query);
+    if (coordinates) {
+      renderSearchResults([coordinateSearchResult(coordinates)], { showAttribution: false });
+      return;
+    }
+    if (query.length < 3) return;
+    state.searchTimer = setTimeout(() => searchLocations(query), SEARCH_DEBOUNCE_MS);
+  }
+
+  async function submitLocationSearch(event) {
+    event.preventDefault();
+    clearTimeout(state.searchTimer);
+    const query = $("location-search").value.trim();
+    const coordinates = parseCoordinates(query);
+    if (coordinates) {
+      renderSearchResults([coordinateSearchResult(coordinates)], { showAttribution: false });
+      chooseSearchResult(0);
+      return;
+    }
+    if (state.searchActiveIndex >= 0) {
+      chooseSearchResult(state.searchActiveIndex);
+      return;
+    }
+    if (state.searchResults.length) {
+      chooseSearchResult(0);
+      return;
+    }
+    if (query.length < 3) {
+      showSearchStatus("Enter at least three characters, or latitude and longitude.");
+      return;
+    }
+    await searchLocations(query);
   }
 
   function selectedSource() {
@@ -523,6 +732,44 @@
   map.on("move zoom resize", positionOverlays);
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") cancelSelection();
+  });
+  document.addEventListener("click", (event) => {
+    if (!$("location-search-form").contains(event.target)) hideSearchPopover();
+  });
+
+  $("location-search-form").addEventListener("submit", submitLocationSearch);
+  $("location-search").addEventListener("input", scheduleLocationSearch);
+  $("location-search").addEventListener("focus", () => {
+    if (state.searchResults.length) {
+      renderSearchResults(state.searchResults, {
+        showAttribution: !state.searchResults.every((result) => result.coordinate),
+      });
+    }
+  });
+  $("location-search").addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      hideSearchPopover();
+      event.target.blur();
+      return;
+    }
+    if (!state.searchResults.length) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActiveSearchResult(state.searchActiveIndex + 1);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActiveSearchResult(
+        state.searchActiveIndex < 0 ? state.searchResults.length - 1 : state.searchActiveIndex - 1,
+      );
+    } else if (event.key === "Enter" && state.searchActiveIndex >= 0) {
+      event.preventDefault();
+      chooseSearchResult(state.searchActiveIndex);
+    }
+  });
+  $("location-results").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-result-index]");
+    if (button) chooseSearchResult(Number(button.dataset.resultIndex));
   });
 
   $("source").addEventListener("change", configureSource);
