@@ -57,16 +57,4 @@ Each build is placed in its own map-name directory. The default bundle contains
 the required same-basename `.tif`/`.info` pair and a copy-ready `.moos` mission
 snippet; either interface may omit the snippet.
 
-## Build sequence
-
-1. Shared core and source registry.
-2. CLI planning, building, and verification.
-3. Local browser UI over the same core.
-4. Compatibility and end-to-end validation with current MOOS-IvP.
-5. Exact crop and curated high-detail Ray/Anaxi sources. (Complete in v0.3.)
-6. Curated source cleanup and UI/CLI workflow polish. (Complete in v0.5.)
-7. Multiple-background workflows after the pMarineViewer texture allocation
-   defect is handled.
-8. Empirical landmark/mission-track validation of the theoretical UTM display
-   alignment estimate, followed by generator-side correction only if needed.
-9. Coding-agent skill, last, once the stable UI/CLI workflow is known.
+Deferred work is tracked in [TODO.md](../TODO.md).

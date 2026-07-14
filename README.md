@@ -6,11 +6,18 @@ cache, and MOOS compatibility checks.
 
 ## Install
 
-MOOS Map requires Python 3.11 or newer. Install the command in its own managed
-environment with [pipx](https://pipx.pypa.io/):
+MOOS Map requires Python 3.11 or newer and [pipx](https://pipx.pypa.io/). On
+macOS, install pipx and add its application directory to your shell path once:
 
 ```sh
-pipx install git+https://github.com/cbenjamin23/moos-map.git
+brew install pipx
+pipx ensurepath
+```
+
+Then install MOOS Map in its own managed environment:
+
+```sh
+pipx install moos-map
 ```
 
 Then launch the UI:
