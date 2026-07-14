@@ -24,6 +24,8 @@ UI  ─┘           ├> source registry
   local image center, and sampled affine placement error.
 - `sources.py`: provider capabilities, policy, attribution, zoom bounds, and
   connection details.
+- `geocoding.py`: Photon place-search adapter, provider-neutral result
+  normalization, short-lived query cache, and remote failure handling.
 - `acquisition.py`: validated HTTP and MBTiles tile readers.
 - `cache.py`: atomic, source-isolated HTTP tile cache.
 - `raster.py`: deterministic row-major tile stitching, exact fractional-pixel

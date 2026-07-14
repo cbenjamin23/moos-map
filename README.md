@@ -34,6 +34,12 @@ Click any two diagonally opposite corners to select a region. Click-hold-drag
 pans the map; another single click starts a replacement selection. Review the
 summary and choose **Build Map**.
 
+Use **Find a place or enter lat, lon** above the map to move the preview to a
+known location. Place-name autocomplete uses the public Photon service and
+requires an internet connection; direct coordinates work locally. Search only
+moves the preview viewport and never changes the selected export region,
+mission origin, or export zoom.
+
 Esri World Imagery and zoom 17 are the defaults. The origin defaults to the
 map center. For an existing mission, open **04 Advanced placement** and enter
 its `LatOrigin` and `LongOrigin`, or drag the red origin dot.
