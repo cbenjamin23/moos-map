@@ -125,3 +125,7 @@ and [TODO.md](TODO.md) for deferred work.
 ## License
 
 GPL-3.0-only. See [LICENSE](LICENSE).
+
+## Acknowledgements
+
+Inspired by [HeroCC/AnaxiMap](https://github.com/HeroCC/AnaxiMap) and Ray Turrisi's map building prototype
