@@ -128,4 +128,11 @@ GPL-3.0-only. See [LICENSE](LICENSE).
 
 ## Acknowledgements
 
-Inspired by [HeroCC/AnaxiMap](https://github.com/HeroCC/AnaxiMap) and Ray Turrisi's map building prototype
+MOOS Map grew out of earlier map-building work in the MOOS-IvP community. We
+are grateful to:
+
+- **[HeroCC/AnaxiMap](https://github.com/HeroCC/AnaxiMap)** for demonstrating a
+  practical tile-download and stitching workflow that inspired MOOS Map's map
+  acquisition pipeline.
+- **Raymond Turrisi** for his map-building prototype, which helped shape the
+  practical workflow and direction of this project.
