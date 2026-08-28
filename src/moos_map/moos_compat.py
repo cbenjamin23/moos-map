@@ -23,18 +23,31 @@ class PMarineViewerEstimate:
     requested_area_max_position_error_m: float
 
 
-def moos_utm(latitude: float, longitude: float) -> tuple[float, float]:
-    """Replicate the WGS-84 LLtoUTM calculation in CMOOSGeodesy.
+def moos_utm(
+    latitude: float,
+    longitude: float,
+    *,
+    zone: int | None = None,
+    southern_hemisphere: bool | None = None,
+) -> tuple[float, float]:
+    """Replicate the WGS-84 UTM calculation used by CMOOSGeodesy.
 
-    Returns (northing, easting). CMOOSGeodesy independently chooses a zone
-    for every point, which is why moos-map rejects zone-crossing rasters.
+    Returns ``(northing, easting)``. Current PROJ-backed CMOOSGeodesy selects
+    a UTM zone and hemisphere when the datum is initialized and retains that
+    projection for subsequent points. Supplying ``zone`` and
+    ``southern_hemisphere`` models that fixed projection; omitting either
+    selects the point's natural value for that part of the projection.
     """
 
     long_temp = (longitude + 180.0) % 360.0 - 180.0
     latitude_radians = math.radians(latitude)
     longitude_radians = math.radians(long_temp)
-    zone = utm_zone_number(long_temp, latitude)
-    central_longitude = (zone - 1) * 6 - 180 + 3
+    projection_zone = (
+        utm_zone_number(long_temp, latitude) if zone is None else zone
+    )
+    if not 1 <= projection_zone <= 60:
+        raise ValueError("UTM zone must be between 1 and 60")
+    central_longitude = (projection_zone - 1) * 6 - 180 + 3
     central_longitude_radians = math.radians(central_longitude)
 
     eccentricity_squared = MOOS_WGS84_ECCENTRICITY_SQUARED
@@ -92,7 +105,10 @@ def moos_utm(latitude: float, longitude: float) -> tuple[float, float]:
             / 720
         )
     )
-    if latitude < 0:
+    use_southern_hemisphere = (
+        latitude < 0 if southern_hemisphere is None else southern_hemisphere
+    )
+    if use_southern_hemisphere:
         northing += 10_000_000.0
     return northing, easting
 
@@ -109,8 +125,25 @@ def estimate_pmarineviewer_placement(
     if samples_per_axis < 1:
         raise ValueError("samples_per_axis must be at least one")
 
-    northwest_northing, northwest_easting = moos_utm(bounds.north, bounds.west)
-    southeast_northing, southeast_easting = moos_utm(bounds.south, bounds.east)
+    map_center_latitude = (bounds.north + bounds.south) / 2.0
+    map_center_longitude = (bounds.west + bounds.east) / 2.0
+    map_zone = utm_zone_number(map_center_longitude, map_center_latitude)
+    map_southern_hemisphere = map_center_latitude < 0
+    origin_zone = utm_zone_number(origin.longitude, origin.latitude)
+    origin_southern_hemisphere = origin.latitude < 0
+
+    northwest_northing, northwest_easting = moos_utm(
+        bounds.north,
+        bounds.west,
+        zone=map_zone,
+        southern_hemisphere=map_southern_hemisphere,
+    )
+    southeast_northing, southeast_easting = moos_utm(
+        bounds.south,
+        bounds.east,
+        zone=map_zone,
+        southern_hemisphere=map_southern_hemisphere,
+    )
     width = abs(northwest_easting - southeast_easting)
     height = abs(northwest_northing - southeast_northing)
 
@@ -119,7 +152,12 @@ def estimate_pmarineviewer_placement(
     center_x = (0.5 - origin_x_fraction) * width
     center_y = (0.5 - origin_y_fraction) * height
 
-    origin_northing, origin_easting = moos_utm(origin.latitude, origin.longitude)
+    origin_northing, origin_easting = moos_utm(
+        origin.latitude,
+        origin.longitude,
+        zone=origin_zone,
+        southern_hemisphere=origin_southern_hemisphere,
+    )
     image_north_y = latitude_to_tile_y(bounds.north, 0)
     image_south_y = latitude_to_tile_y(bounds.south, 0)
 
@@ -140,7 +178,12 @@ def estimate_pmarineviewer_placement(
                 )
                 image_u = (longitude - bounds.west) / (bounds.east - bounds.west)
                 displayed_x = (image_u - origin_x_fraction) * width
-                northing, easting = moos_utm(latitude, longitude)
+                northing, easting = moos_utm(
+                    latitude,
+                    longitude,
+                    zone=origin_zone,
+                    southern_hemisphere=origin_southern_hemisphere,
+                )
                 true_x = easting - origin_easting
                 true_y = northing - origin_northing
                 maximum = max(

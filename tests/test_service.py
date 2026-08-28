@@ -203,22 +203,45 @@ def test_outside_origin_is_allowed_with_warning(tmp_path: Path) -> None:
     assert any("origin lies outside" in warning for warning in plan.warnings)
 
 
-def test_cross_zone_map_is_rejected(tmp_path: Path) -> None:
+def test_cross_zone_map_is_planned_with_fixed_zone_geodesy(tmp_path: Path) -> None:
     request = local_request(
         tmp_path,
         bounds=Bounds(west=-72.1, south=42.0, east=-71.9, north=42.1),
         origin=Origin(latitude=42.05, longitude=-72.0),
     )
 
-    with pytest.raises(ValidationError, match="UTM zone"):
-        plan_map(request)
+    plan = plan_map(request)
+
+    assert plan.pmarineviewer_width_m == pytest.approx(16_163.118, abs=0.01)
+    assert plan.warnings == ()
 
 
-def test_origin_in_different_utm_zone_is_rejected(tmp_path: Path) -> None:
+def test_origin_and_map_center_may_use_different_utm_zones(tmp_path: Path) -> None:
     request = local_request(
         tmp_path,
-        origin=Origin(latitude=42.36, longitude=-72.1),
+        bounds=Bounds(west=-72.1, south=42.0, east=-71.9, north=42.1),
+        origin=Origin(latitude=42.05, longitude=-72.05),
     )
 
-    with pytest.raises(ValidationError, match="origin is in UTM zone"):
-        plan_map(request)
+    plan = plan_map(request)
+
+    assert plan.estimated_max_pmarineviewer_position_error_m == pytest.approx(
+        881.182, abs=0.01
+    )
+    assert plan.warnings == ()
+
+
+def test_equator_crossing_map_is_planned_in_datum_hemisphere(
+    tmp_path: Path,
+) -> None:
+    request = local_request(
+        tmp_path,
+        bounds=Bounds(west=-3.005, south=-0.005, east=-2.995, north=0.005),
+        origin=Origin(latitude=0.0, longitude=-3.0),
+    )
+
+    plan = plan_map(request)
+
+    assert plan.pmarineviewer_height_m == pytest.approx(1_105.300465, abs=0.001)
+    assert plan.estimated_max_pmarineviewer_position_error_m < 0.001
+    assert plan.warnings == ()

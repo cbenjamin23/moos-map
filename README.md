@@ -4,6 +4,12 @@ Build cropped TIFF background maps for MOOS-IvP through a local browser UI or
 the `moos-map` command. Both interfaces use the same map sources, crop logic,
 cache, and MOOS compatibility checks.
 
+MOOS Map targets current upstream MOOS-IvP with the default PROJ-backed
+`CMOOSGeodesy`. Its datum-fixed UTM zone and hemisphere support maps that cross
+zone boundaries or the equator. Legacy MOOS-IvP builds and current builds
+configured with `--with-proj=off` are not supported for maps that cross a UTM
+zone boundary or the equator.
+
 [PyPI Project](https://pypi.org/project/moos-map/)
 
 ## Install
@@ -156,9 +162,10 @@ those foundations with:
 - **Complete Map Bundles:** Places matching `.tif`, `.info`, and optional
   copy-ready `.moos` files together in a named output directory.
 
-- **MOOS Geodesy Validation:** Detects UTM-zone crossings, incompatible
-  map/origin zones, invalid geographic bounds, and placement conditions that
-  current MOOS geodesy cannot represent reliably.
+- **Current MOOS Geodesy Compatibility:** Supports datum-fixed PROJ maps that
+  cross UTM boundaries or the equator and calculates pMarineViewer placement
+  estimates even when the map center and mission origin select different
+  natural zones.
 
 - **Shared CLI and GUI Core:** Uses the same source registry, crop calculations,
   cache, output writers, and validation from both interfaces, rather than

@@ -17,12 +17,10 @@ from .errors import SourcePolicyError, ValidationError
 from .geometry import (
     approximate_ground_size,
     bounds_for_tile_range,
-    crosses_utm_zone,
     estimate_vertical_mapping_error_for_bounds,
     meters_per_pixel,
     pixel_window_for_bounds,
     tile_range_for_bounds,
-    utm_zone_number,
 )
 from .models import BuildResult, MapPlan, MapRequest
 from .moos_compat import estimate_pmarineviewer_placement
@@ -105,10 +103,6 @@ def plan_map(
         )
     if request.bounds.south < -80 or request.bounds.north > 84:
         raise ValidationError("MOOS UTM map placement is limited to 80°S through 84°N")
-    if crosses_utm_zone(request.bounds):
-        raise ValidationError(
-            "Requested bounds cross a UTM zone boundary; choose a smaller region"
-        )
     if not source.min_zoom <= request.zoom <= source.max_zoom:
         raise ValidationError(
             f"Source '{source.id}' supports zoom {source.min_zoom} through "
@@ -117,21 +111,12 @@ def plan_map(
     tiles = tile_range_for_bounds(request.bounds, request.zoom)
     download_bounds = bounds_for_tile_range(tiles)
     actual_bounds = request.bounds
-    map_center_latitude = (actual_bounds.north + actual_bounds.south) / 2.0
-    map_center_longitude = (actual_bounds.east + actual_bounds.west) / 2.0
-    map_zone = utm_zone_number(map_center_longitude, map_center_latitude)
-    origin_zone = utm_zone_number(request.origin.longitude, request.origin.latitude)
-    if map_zone != origin_zone:
-        raise ValidationError(
-            f"Mission origin is in UTM zone {origin_zone}, but the TIFF is in zone "
-            f"{map_zone}; current MOOS geodesy cannot place this reliably"
-        )
     requested_width, requested_height = approximate_ground_size(request.bounds)
     actual_width, actual_height = requested_width, requested_height
     crop = pixel_window_for_bounds(request.bounds, tiles, source.tile_size)
     pixel_width = crop.output_width
     pixel_height = crop.output_height
-    center_latitude = map_center_latitude
+    center_latitude = (actual_bounds.north + actual_bounds.south) / 2.0
 
     warnings: list[str] = []
     if not source.export_allowed:

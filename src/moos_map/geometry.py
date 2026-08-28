@@ -191,14 +191,3 @@ def utm_zone_number(longitude: float, latitude: float | None = None) -> int:
         if 33 <= longitude < 42:
             return 37
     return zone
-
-
-def crosses_utm_zone(bounds: Bounds) -> bool:
-    epsilon = 1e-12
-    corners = {
-        utm_zone_number(bounds.west, bounds.south),
-        utm_zone_number(bounds.west, bounds.north),
-        utm_zone_number(bounds.east - epsilon, bounds.south),
-        utm_zone_number(bounds.east - epsilon, bounds.north),
-    }
-    return len(corners) != 1

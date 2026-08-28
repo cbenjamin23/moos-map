@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
 from moos_map.geocoding import GeocodingError, SearchBounds, SearchResult
@@ -180,15 +181,17 @@ def test_blank_output_directory_is_accepted_by_plan_and_rejected_by_build() -> N
     assert "Choose an output directory" in response.json()["error"]
 
 
-def test_api_returns_user_facing_domain_error() -> None:
+def test_plan_api_accepts_different_map_and_origin_zones_without_warning() -> None:
     response = client.post(
         "/api/plan",
         json={
             "bounds": {"west": -72.1, "south": 42, "east": -71.9, "north": 42.1},
-            "origin": {"latitude": 42.05, "longitude": -72},
+            "origin": {"latitude": 42.05, "longitude": -72.05},
             "zoom": 16,
         },
     )
 
-    assert response.status_code == 400
-    assert "UTM zone" in response.json()["error"]
+    assert response.status_code == 200
+    plan = response.json()
+    assert plan["pmarineviewer_width_m"] == pytest.approx(16_163.118, abs=0.01)
+    assert plan["warnings"] == []

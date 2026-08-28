@@ -4,7 +4,6 @@ import pytest
 
 from moos_map.geometry import (
     bounds_for_tile_range,
-    crosses_utm_zone,
     estimate_vertical_mapping_error,
     pixel_window_for_bounds,
     tile_range_for_bounds,
@@ -43,11 +42,6 @@ def test_exact_crop_window_is_smaller_than_downloaded_tile_grid() -> None:
     assert crop.top > 0
     assert crop.right < tiles.columns * 256
     assert crop.bottom < tiles.rows * 256
-
-
-def test_utm_zone_boundary_detection() -> None:
-    assert crosses_utm_zone(Bounds(west=-72.1, south=42.0, east=-71.9, north=42.1))
-    assert not crosses_utm_zone(Bounds(west=-71.2, south=42.0, east=-71.0, north=42.1))
 
 
 def test_vertical_mapping_error_is_small_but_nonzero_for_local_map() -> None:

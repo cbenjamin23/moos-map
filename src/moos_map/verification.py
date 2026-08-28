@@ -7,7 +7,6 @@ from typing import Any
 from PIL import Image, UnidentifiedImageError
 
 from .errors import ValidationError
-from .geometry import crosses_utm_zone, utm_zone_number
 from .moos_compat import estimate_pmarineviewer_placement
 from .moos_files import parse_info_file
 
@@ -76,27 +75,14 @@ def verify_bundle(tiff_path: Path) -> VerificationReport:
         details["info_comments"] = list(info.comments)
         if info.bounds.south < -80 or info.bounds.north > 84:
             errors.append("The .info bounds exceed the normal MOOS UTM latitude range")
-        if crosses_utm_zone(info.bounds):
-            errors.append("The .info bounds cross a UTM zone boundary")
-        else:
-            center_latitude = (info.bounds.north + info.bounds.south) / 2.0
-            center_longitude = (info.bounds.east + info.bounds.west) / 2.0
-            map_zone = utm_zone_number(center_longitude, center_latitude)
-            origin_zone = utm_zone_number(info.origin.longitude, info.origin.latitude)
-            if map_zone != origin_zone:
-                errors.append(
-                    f"The .info origin is in UTM zone {origin_zone}, while the image "
-                    f"is in zone {map_zone}"
-                )
-            else:
-                placement = estimate_pmarineviewer_placement(info.bounds, info.origin)
-                details["pmarineviewer_estimate"] = {
-                    "width_m": placement.width_m,
-                    "height_m": placement.height_m,
-                    "image_center_local_x_m": placement.image_center_x_m,
-                    "image_center_local_y_m": placement.image_center_y_m,
-                    "estimated_max_position_error_m": (placement.max_position_error_m),
-                }
+        placement = estimate_pmarineviewer_placement(info.bounds, info.origin)
+        details["pmarineviewer_estimate"] = {
+            "width_m": placement.width_m,
+            "height_m": placement.height_m,
+            "image_center_local_x_m": placement.image_center_x_m,
+            "image_center_local_y_m": placement.image_center_y_m,
+            "estimated_max_position_error_m": placement.max_position_error_m,
+        }
         if not info.bounds.contains(info.origin.latitude, info.origin.longitude):
             warnings.append(
                 "The .info datum/origin is outside the image bounds; this is valid if "
