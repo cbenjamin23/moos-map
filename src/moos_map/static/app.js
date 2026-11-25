@@ -8,6 +8,7 @@
     plan: null,
     previewLayer: null,
     selectionLayer: null,
+    selectionLongitudeOffset: 0,
     originMarker: null,
     selecting: false,
     selectionStart: null,
@@ -25,6 +26,7 @@
   const INITIAL_MAP_ZOOM = 15;
   const SEARCH_POINT_ZOOM = 15;
   const SEARCH_DEBOUNCE_MS = 350;
+  const LONGITUDE_TOLERANCE = 1e-10;
 
   const map = L.map("map", {
     zoomControl: true,
@@ -181,7 +183,7 @@
   async function searchLocations(query) {
     const sequence = ++state.searchSequence;
     showSearchStatus("Searching…");
-    const center = map.getCenter();
+    const center = map.wrapLatLng(map.getCenter());
     const params = new URLSearchParams({
       q: query,
       latitude: String(center.lat),
@@ -284,7 +286,7 @@
   }
 
   function updateOriginFromMarker(event, { replan = false } = {}) {
-    const point = event.target.getLatLng();
+    const point = map.wrapLatLng(event.target.getLatLng());
     setOriginMode(false);
     setNumber("origin-lat", point.lat);
     setNumber("origin-lon", point.lng);
@@ -396,17 +398,24 @@
     }
     if (!state.originMarker) state.originMarker = createOriginMarker();
     if (!map.hasLayer(state.originMarker)) state.originMarker.addTo(map);
-    state.originMarker.setLatLng([latitude, longitude]);
+    const displayCenter = state.selectionLayer?.bounds?.getCenter().lng ?? map.getCenter().lng;
+    const displayLongitude = longitude + 360 * Math.round((displayCenter - longitude) / 360);
+    state.originMarker.setLatLng([latitude, displayLongitude]);
   }
 
-  function finalizeSelection(bounds, { fit = false } = {}) {
+  function finalizeSelection(
+    bounds,
+    { fit = false, longitudeOffset = state.selectionLongitudeOffset } = {},
+  ) {
     state.bounds = bounds;
     state.plan = null;
+    state.selectionLongitudeOffset = longitudeOffset;
     if (!state.selectionLayer) state.selectionLayer = createBoxOverlay();
     state.selectionLayer.element.classList.remove("drawing");
+    // Keep the overlay on the copy where the user selected the region.
     state.selectionLayer.setBounds([
-      [bounds.south, bounds.west],
-      [bounds.north, bounds.east],
+      [bounds.south, bounds.west + longitudeOffset],
+      [bounds.north, bounds.east + longitudeOffset],
     ]);
     updateCornerInputs();
     updateOriginFromSelection();
@@ -423,6 +432,7 @@
     state.previousBounds = state.bounds;
     state.bounds = null;
     state.plan = null;
+    state.planSequence += 1;
     updateCornerInputs();
     $("build-button").disabled = true;
     state.selectionStart = event.latlng;
@@ -432,6 +442,7 @@
     if (state.originMarker && map.hasLayer(state.originMarker)) {
       state.originMarker.remove();
     }
+    $("summary").classList.remove("loading");
     $("summary").innerHTML = emptySummary(
       "Choosing region…",
       "Move the pointer, then click the opposite corner.",
@@ -452,12 +463,20 @@
       return;
     }
 
+    const drawnBounds = L.latLngBounds(state.selectionStart, event.latlng);
+    const bounds = leafletBoundsToObject(map.wrapLatLngBounds(drawnBounds));
+    const longitudeOffset = drawnBounds.getWest() - bounds.west;
+    if (bounds.west < -180 - LONGITUDE_TOLERANCE || bounds.east > 180 + LONGITUDE_TOLERANCE) {
+      $("map-hint").textContent = "Regions cannot cross the antimeridian (±180°). Choose a second corner on the same side or press Esc.";
+      return;
+    }
+    // Unprojecting an exact edge pixel can put it just outside the valid range.
+    bounds.west = Math.max(bounds.west, -180);
+    bounds.east = Math.min(bounds.east, 180);
+
     state.selecting = false;
     map.getContainer().classList.remove("selecting");
-    state.selectionLayer.element.classList.remove("drawing");
-    finalizeSelection(
-      leafletBoundsToObject(L.latLngBounds(state.selectionStart, event.latlng)),
-    );
+    finalizeSelection(bounds, { longitudeOffset });
     state.selectionStart = null;
     state.previousBounds = null;
   }
