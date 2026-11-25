@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from . import __version__
-from .errors import MoosMapError
-from .models import Bounds, MapRequest, Origin
+from .errors import MoosMapError, ValidationError
+from .models import DEFAULT_MAX_TEXTURE_DIMENSION, Bounds, MapRequest, Origin
 from .service import build_map, plan_map
 from .sources import list_sources
 from .verification import verify_bundle
@@ -35,6 +35,11 @@ def _add_map_arguments(parser: argparse.ArgumentParser) -> None:
             "Two diagonally opposite WGS84 corners as latitude/longitude pairs; "
             "either corner order is accepted"
         ),
+    )
+    parser.add_argument(
+        "--allow-wide-bounds",
+        action="store_true",
+        help="Allow the numerically ordered rectangle to span more than 180 degrees of longitude",
     )
     parser.add_argument(
         "--origin",
@@ -68,6 +73,10 @@ def _add_map_arguments(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--max-tiles", type=int, default=1024)
     parser.add_argument("--max-pixels", type=int, default=67_108_864)
+    parser.add_argument(
+        "--max-texture-dimension", type=int, default=DEFAULT_MAX_TEXTURE_DIMENSION,
+        metavar="PIXELS", help="Target pMarineViewer texture size per side for planning warnings",
+    )
 
 
 def _request_from_args(args: argparse.Namespace) -> MapRequest:
@@ -78,6 +87,11 @@ def _request_from_args(args: argparse.Namespace) -> MapRequest:
         east=max(longitude_1, longitude_2),
         north=max(latitude_1, latitude_2),
     )
+    if bounds.east - bounds.west > 180 and not args.allow_wide_bounds:
+        raise ValidationError(
+            "The corners span more than 180 degrees of longitude. Split a date-line "
+            "crossing into two exports, or pass --allow-wide-bounds to use the wider rectangle."
+        )
     if args.origin is None:
         origin = Origin(
             latitude=(bounds.south + bounds.north) / 2,
@@ -102,6 +116,7 @@ def _request_from_args(args: argparse.Namespace) -> MapRequest:
         mbtiles_path=args.mbtiles,
         max_tiles=args.max_tiles,
         max_pixels=args.max_pixels,
+        max_texture_dimension=args.max_texture_dimension,
     )
 
 

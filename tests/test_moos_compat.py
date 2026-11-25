@@ -13,6 +13,18 @@ def test_fixed_zone_projection_remains_continuous_across_boundary() -> None:
     assert east_easting - west_easting == pytest.approx(22.28574, abs=0.001)
 
 
+@pytest.mark.parametrize("zone", [1, 60])
+def test_fixed_zone_projection_remains_continuous_at_antimeridian(zone: int) -> None:
+    _, west_easting = moos_utm(0, 179.9999, zone=zone)
+    _, edge_easting = moos_utm(0, 180, zone=zone)
+    _, wrapped_edge_easting = moos_utm(0, -180, zone=zone)
+    _, east_easting = moos_utm(0, -179.9999, zone=zone)
+
+    assert edge_easting == wrapped_edge_easting
+    assert edge_easting - west_easting == pytest.approx(11.14287, abs=0.001)
+    assert east_easting - edge_easting == pytest.approx(11.14287, abs=0.001)
+
+
 def test_fixed_hemisphere_projection_remains_continuous_across_equator() -> None:
     north_northing, _ = moos_utm(
         0.0001,
@@ -77,6 +89,30 @@ def test_estimate_uses_map_center_zone_across_utm_boundary() -> None:
     assert estimate.width_m == pytest.approx(16_163.118, abs=0.01)
     assert estimate.height_m == pytest.approx(11_685.607, abs=0.01)
     assert estimate.max_position_error_m == pytest.approx(707.274, abs=0.1)
+
+
+@pytest.mark.parametrize(("west", "east"), [(179.999, 180), (-180, -179.999)])
+def test_estimate_for_map_touching_antimeridian(west: float, east: float) -> None:
+    estimate = estimate_pmarineviewer_placement(
+        Bounds(west=west, south=0, east=east, north=0.001),
+        Origin(latitude=0.0005, longitude=(west + east) / 2),
+    )
+
+    # A WGS-84 PROJ projection in the map's zone gives a width of about 111.43 m.
+    assert estimate.width_m == pytest.approx(111.4287, abs=0.01)
+    assert estimate.max_position_error_m < 0.001
+
+
+@pytest.mark.parametrize("direction", [-1, 1])
+def test_estimate_for_nearby_mission_origin_across_antimeridian(direction: int) -> None:
+    west, east = sorted((179.990 * direction, 179.999 * direction))
+    bounds = Bounds(west=west, south=0, east=east, north=0.001)
+    origin = Origin(latitude=0.0005, longitude=-179.999 * direction)
+
+    estimate = estimate_pmarineviewer_placement(bounds, origin)
+
+    assert estimate.image_center_x_m == pytest.approx(-direction * 724.3, abs=0.5)
+    assert estimate.max_position_error_m < 1
 
 
 @pytest.mark.parametrize(

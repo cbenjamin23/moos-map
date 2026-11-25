@@ -137,6 +137,7 @@
             <button id="build-button" type="submit" class="primary-button" disabled>
               Build Map
             </button>
+            <div id="build-status" role="status"></div>
           </section>
         </form>
 
@@ -165,7 +166,7 @@
                 <span class="section-kicker">04</span>
                 <span class="advanced-name">Advanced placement</span>
               </span>
-              <small>Optional coordinates</small>
+              <small>Optional settings</small>
             </summary>
             <div class="advanced-content">
               <p class="advanced-copy">
@@ -202,6 +203,11 @@
                   <label>Origin longitude <input id="origin-lon" type="number" step="any" disabled /></label>
                 </div>
               </div>
+              <label>
+                Target texture limit (px per side)
+                <span class="info-icon" tabindex="0" data-tip="Compare the export dimensions with the texture limit of the computer that will run pMarineViewer.">i</span>
+                <input id="max-texture-dimension" type="number" min="1" step="1" value="16384" />
+              </label>
             </div>
           </details>
         </section>
@@ -209,7 +215,7 @@
     </main>
 
     <script
-      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      src="/static/vendor/leaflet-1.9.4.js"
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>

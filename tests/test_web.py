@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from conftest import make_tile
+from moos_map.acquisition import HttpTileProvider
+from moos_map.cache import TileCache
 from moos_map.geocoding import GeocodingError, SearchBounds, SearchResult
+from moos_map.sources import MapSource
 from moos_map.web import app
 
 
@@ -36,6 +43,7 @@ def test_health_and_static_app_load() -> None:
     app_script = client.get("/static/app.js").text
     assert "draggable: true" in app_script
     assert 'addEventListener("input", applyCornerInputs)' in app_script
+    assert 'addEventListener("blur", applyCornerInputs)' in app_script
     assert "const MIT_SAILING_PAVILION = [42.358436, -71.087448];" in app_script
     assert "const INITIAL_MAP_ZOOM = 15;" in app_script
     assert ".setView(MIT_SAILING_PAVILION, INITIAL_MAP_ZOOM);" in app_script
@@ -126,6 +134,47 @@ def test_plan_api_defaults_to_zoom_17() -> None:
 
     assert response.status_code == 200
     assert response.json()["tiles"]["zoom"] == 17
+
+
+def test_custom_tile_url_is_used_for_requests_and_omitted_from_reports(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    url = "https://example.test/path-credential/{z}/{x}/{y}.png?signature=example-credential"
+    tile = make_tile((22, 100, 140))
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.startswith("/path-credential/")
+        assert request.url.params["signature"] == "example-credential"
+        return httpx.Response(200, content=tile)
+
+    def provider_for(source: MapSource) -> HttpTileProvider:
+        assert source.url_template == url
+        provider = HttpTileProvider(source, cache=TileCache(source, tmp_path / "cache"))
+        provider._client.close()
+        provider._client = httpx.Client(transport=httpx.MockTransport(handle))
+        return provider
+
+    monkeypatch.setattr("moos_map.service.create_provider", provider_for)
+    payload = {
+        "bounds": {"west": -71.088, "south": 42.358, "east": -71.087, "north": 42.359},
+        "origin": {"latitude": 42.3585, "longitude": -71.0875},
+        "source_id": "custom",
+        "custom_url_template": url,
+        "accept_custom_source_terms": True,
+        "output_dir": str(tmp_path),
+    }
+
+    plan_response = client.post("/api/plan", json=payload)
+    build_response = client.post("/api/build", json=payload)
+
+    assert plan_response.status_code == build_response.status_code == 200
+    assert plan_response.json()["source"]["url_template"] is None
+    result = build_response.json()
+    assert result["plan"]["source"]["url_template"] is None
+    assert result["verification"]["ok"] and result["downloaded_tiles"] > 0
+    for response in (plan_response, build_response):
+        assert "path-credential" not in response.text
+        assert "example-credential" not in response.text
 
 
 def test_plan_api_uses_shared_core() -> None:

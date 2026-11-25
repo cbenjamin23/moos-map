@@ -4,6 +4,9 @@ import sqlite3
 import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from contextlib import suppress
+from datetime import timezone
+from email.utils import parsedate_to_datetime
 from io import BytesIO
 from typing import Callable, Protocol
 
@@ -14,10 +17,11 @@ from . import __version__
 from .cache import TileCache
 from .errors import FetchError
 from .models import TileRange
-from .sources import MapSource
+from .sources import MapSource, open_mbtiles
 
 
 ProgressCallback = Callable[[int, int, int, int], None]
+MAX_TILE_BYTES = 10 * 1024 * 1024
 
 
 class TileProvider(Protocol):
@@ -44,6 +48,27 @@ def validate_tile_bytes(data: bytes, tile_size: int, description: str) -> None:
         raise FetchError(
             f"Response was not a readable image for {description}"
         ) from exc
+
+
+def _read_tile(response: httpx.Response, description: str) -> bytes:
+    data = bytearray()
+    for chunk in response.iter_bytes(chunk_size=64 * 1024):
+        if len(data) + len(chunk) > MAX_TILE_BYTES:
+            raise FetchError(f"Tile response exceeded 10 MiB for {description}")
+        data.extend(chunk)
+    return bytes(data)
+
+
+def _retry_delay(header: str, fallback: float) -> float:
+    try:
+        if header.isascii() and header.isdecimal():
+            return min(int(header), 10)
+        retry_at = parsedate_to_datetime(header)
+        if retry_at.tzinfo is None:
+            retry_at = retry_at.replace(tzinfo=timezone.utc)
+        return min(max(retry_at.timestamp() - time.time(), 0), 10)
+    except (ValueError, TypeError, OverflowError, OSError):
+        return fallback
 
 
 class HttpTileProvider:
@@ -76,54 +101,44 @@ class HttpTileProvider:
     def fetch(self, zoom: int, x: int, y: int, *, force: bool = False) -> bytes:
         description = f"{self.source.id} z={zoom} x={x} y={y}"
         if not force:
-            cached = self.cache.read(zoom, x, y)
-            if cached is not None:
-                try:
+            try:
+                cached = self.cache.read(zoom, x, y)
+                if cached is not None:
                     validate_tile_bytes(cached, self.source.tile_size, description)
-                except FetchError:
-                    self.cache.path_for(zoom, x, y).unlink(missing_ok=True)
-                else:
-                    with self._stats_lock:
-                        self.cache_hits += 1
-                    return cached
+            except (OSError, FetchError):
+                cached = None
+            if cached is not None:
+                with self._stats_lock:
+                    self.cache_hits += 1
+                return cached
 
         url = self.source.tile_url(zoom, x, y)
         last_error: Exception | None = None
         for attempt in range(self.retries + 1):
+            delay = min(0.5 * (2**attempt), 8.0)
             try:
-                response = self._client.get(url)
-                if response.status_code == 200:
-                    data = response.content
-                    if len(data) > 10 * 1024 * 1024:
-                        raise FetchError(
-                            f"Tile response exceeded 10 MB for {description}"
-                        )
-                    validate_tile_bytes(data, self.source.tile_size, description)
-                    self.cache.write(zoom, x, y, data)
-                    with self._stats_lock:
-                        self.downloaded_tiles += 1
-                    return data
-
-                message = f"HTTP {response.status_code} fetching {description}"
-                if response.status_code not in self.RETRYABLE_STATUS_CODES:
-                    raise FetchError(message)
-
-                retry_after = response.headers.get("Retry-After", "")
-                try:
-                    delay = min(float(retry_after), 10.0)
-                except ValueError:
-                    delay = min(0.5 * (2**attempt), 8.0)
-                last_error = FetchError(message)
-            except (httpx.HTTPError, FetchError) as exc:
+                with self._client.stream("GET", url) as response:
+                    if response.status_code == 200:
+                        data = _read_tile(response, description)
+                        try:
+                            validate_tile_bytes(data, self.source.tile_size, description)
+                        except FetchError as exc:
+                            last_error = exc
+                        else:
+                            # Cache writes are optional once the tile is validated.
+                            with suppress(OSError):
+                                self.cache.write(zoom, x, y, data)
+                            with self._stats_lock:
+                                self.downloaded_tiles += 1
+                            return data
+                    else:
+                        error = FetchError(f"HTTP {response.status_code} fetching {description}")
+                        if response.status_code not in self.RETRYABLE_STATUS_CODES:
+                            raise error
+                        last_error = error
+                        delay = _retry_delay(response.headers.get("Retry-After", ""), delay)
+            except httpx.HTTPError as exc:
                 last_error = exc
-                if isinstance(exc, FetchError) and "HTTP " in str(exc):
-                    status_text = str(exc).split("HTTP ", 1)[1].split(" ", 1)[0]
-                    if (
-                        status_text.isdigit()
-                        and int(status_text) not in self.RETRYABLE_STATUS_CODES
-                    ):
-                        raise
-                delay = min(0.5 * (2**attempt), 8.0)
 
             if attempt < self.retries:
                 time.sleep(delay)
@@ -145,29 +160,27 @@ class MBTilesProvider:
         self.cache_hits = 0
         self.downloaded_tiles = 0
         self._lock = threading.Lock()
-        try:
-            self._connection = sqlite3.connect(self.path, check_same_thread=False)
-            self._connection.execute("SELECT 1 FROM tiles LIMIT 1")
-        except sqlite3.Error as exc:
-            raise FetchError(f"Invalid MBTiles archive: {self.path}") from exc
+        self._connection = open_mbtiles(self.path, check_same_thread=False)
 
     def fetch(self, zoom: int, x: int, y: int, *, force: bool = False) -> bytes:
         del force
         tms_y = (1 << zoom) - 1 - y
-        with self._lock:
-            row = self._connection.execute(
-                "SELECT tile_data FROM tiles "
-                "WHERE zoom_level=? AND tile_column=? AND tile_row=?",
-                (zoom, x, tms_y),
-            ).fetchone()
+        description = f"{self.path.name}: z={zoom} x={x} y={y}"
+        try:
+            with self._lock:
+                row = self._connection.execute(
+                    "SELECT tile_data FROM tiles "
+                    "WHERE zoom_level=? AND tile_column=? AND tile_row=?",
+                    (zoom, x, tms_y),
+                ).fetchone()
+        except sqlite3.Error as exc:
+            raise FetchError(f"Could not read tile from {description}: {exc}") from exc
         if row is None:
-            raise FetchError(
-                f"Tile is absent from {self.path.name}: z={zoom} x={x} y={y}"
-            )
-        data = bytes(row[0])
-        validate_tile_bytes(
-            data, self.source.tile_size, f"{self.path.name} z={zoom} x={x} y={y}"
-        )
+            raise FetchError(f"Tile is absent from {description}")
+        data = row[0]
+        if not isinstance(data, bytes):
+            raise FetchError(f"Invalid MBTiles tile data for {description}: expected a BLOB")
+        validate_tile_bytes(data, self.source.tile_size, description)
         with self._lock:
             self.cache_hits += 1
         return data

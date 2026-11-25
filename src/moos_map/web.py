@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from . import __version__
 from .errors import MoosMapError, ValidationError
 from .geocoding import GeocodingError, search_locations
-from .models import Bounds, MapRequest, Origin
+from .models import DEFAULT_MAX_TEXTURE_DIMENSION, Bounds, MapRequest, Origin
 from .service import build_map, plan_map
 from .sources import list_sources
 from .verification import verify_bundle
@@ -51,6 +51,7 @@ class MapPayload(BaseModel):
     mbtiles_path: str | None = None
     max_tiles: int = Field(default=1024, ge=1)
     max_pixels: int = Field(default=67_108_864, ge=65_536)
+    max_texture_dimension: int = Field(default=DEFAULT_MAX_TEXTURE_DIMENSION, ge=1)
 
     def to_request(self) -> MapRequest:
         return MapRequest(
@@ -69,6 +70,7 @@ class MapPayload(BaseModel):
             mbtiles_path=Path(self.mbtiles_path) if self.mbtiles_path else None,
             max_tiles=self.max_tiles,
             max_pixels=self.max_pixels,
+            max_texture_dimension=self.max_texture_dimension,
         )
 
 

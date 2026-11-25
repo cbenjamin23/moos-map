@@ -5,7 +5,10 @@
   const state = {
     sources: [],
     bounds: null,
+    cornerInputsValid: false,
+    cornerInputsPending: false,
     plan: null,
+    building: false,
     previewLayer: null,
     selectionLayer: null,
     selectionLongitudeOffset: 0,
@@ -332,32 +335,34 @@
     };
   }
 
-  function updateCornerInputs() {
-    const values = state.bounds || {};
-    const fields = {
-      north: "corner-north",
-      west: "corner-west",
-      south: "corner-south",
-      east: "corner-east",
-    };
-    for (const [key, id] of Object.entries(fields)) {
-      $(id).value = Number.isFinite(values[key]) ? values[key].toFixed(8) : "";
+  function updateCornerInputs({ preserveText = false } = {}) {
+    if (!preserveText) {
+      const values = state.bounds || {};
+      for (const key of ["north", "west", "south", "east"]) {
+        $(`corner-${key}`).value = Number.isFinite(values[key]) ? values[key].toFixed(8) : "";
+      }
     }
+    state.cornerInputsValid = Boolean(state.bounds);
+    state.cornerInputsPending = false;
     $("corner-error").hidden = true;
     $("corner-error").textContent = "";
   }
 
-  function applyCornerInputs() {
+  function applyCornerInputs(event) {
+    const editing = event.type === "input";
+    if (editing) state.cornerInputsPending = true;
+    if (!state.cornerInputsPending) return;
+
     const values = {
       north: number("corner-north"),
       west: number("corner-west"),
       south: number("corner-south"),
       east: number("corner-east"),
     };
-    if (Object.values(values).some((value) => !Number.isFinite(value))) return;
-
     let message = "";
-    if (values.north > 85.05112878 || values.south < -85.05112878) {
+    if (Object.values(values).some((value) => !Number.isFinite(value))) {
+      message = "Enter all four corner coordinates.";
+    } else if (values.north > 85.05112878 || values.south < -85.05112878) {
       message = "Corner latitudes must stay within the Web Mercator map limits.";
     } else if (values.west < -180 || values.east > 180) {
       message = "Corner longitudes must be between −180 and 180.";
@@ -367,14 +372,18 @@
       message = "Top-left longitude must be west of bottom-right longitude.";
     }
 
-    if (message) {
+    if (message || editing) {
+      state.cornerInputsValid = false;
+      invalidatePlan();
       $("corner-error").textContent = message;
-      $("corner-error").hidden = false;
+      $("corner-error").hidden = !message;
+      $("summary").innerHTML = message
+        ? emptySummary("Check the region coordinates", message)
+        : emptySummary("Apply corner edits", "Press Enter or leave the field to update the region.");
       return;
     }
 
-    $("corner-error").hidden = true;
-    finalizeSelection(values, { fit: true });
+    finalizeSelection(values, { fit: true, preserveCornerText: true });
   }
 
   function updateOriginFromSelection() {
@@ -405,10 +414,13 @@
 
   function finalizeSelection(
     bounds,
-    { fit = false, longitudeOffset = state.selectionLongitudeOffset } = {},
+    { fit = false, longitudeOffset = state.selectionLongitudeOffset, preserveCornerText = false } = {},
   ) {
+    state.selecting = false;
+    state.selectionStart = null;
+    state.previousBounds = null;
+    map.getContainer().classList.remove("selecting");
     state.bounds = bounds;
-    state.plan = null;
     state.selectionLongitudeOffset = longitudeOffset;
     if (!state.selectionLayer) state.selectionLayer = createBoxOverlay();
     state.selectionLayer.element.classList.remove("drawing");
@@ -417,7 +429,7 @@
       [bounds.south, bounds.west + longitudeOffset],
       [bounds.north, bounds.east + longitudeOffset],
     ]);
-    updateCornerInputs();
+    updateCornerInputs({ preserveText: preserveCornerText });
     updateOriginFromSelection();
     if (fit) {
       map.fitBounds(state.selectionLayer.bounds, { padding: [35, 35], maxZoom: 21 });
@@ -431,10 +443,8 @@
     map.getContainer().classList.add("selecting");
     state.previousBounds = state.bounds;
     state.bounds = null;
-    state.plan = null;
-    state.planSequence += 1;
     updateCornerInputs();
-    $("build-button").disabled = true;
+    invalidatePlan();
     state.selectionStart = event.latlng;
     if (!state.selectionLayer) state.selectionLayer = createBoxOverlay();
     state.selectionLayer.hide();
@@ -442,7 +452,6 @@
     if (state.originMarker && map.hasLayer(state.originMarker)) {
       state.originMarker.remove();
     }
-    $("summary").classList.remove("loading");
     $("summary").innerHTML = emptySummary(
       "Choosing region…",
       "Move the pointer, then click the opposite corner.",
@@ -474,11 +483,7 @@
     bounds.west = Math.max(bounds.west, -180);
     bounds.east = Math.min(bounds.east, 180);
 
-    state.selecting = false;
-    map.getContainer().classList.remove("selecting");
     finalizeSelection(bounds, { longitudeOffset });
-    state.selectionStart = null;
-    state.previousBounds = null;
   }
 
   function handleMapClick(event) {
@@ -512,7 +517,7 @@
     if (state.previewLayer) state.previewLayer.remove();
     state.previewLayer = null;
     if (!source || !source.url_template) return;
-    const url = source.url_template.replace("{source_z}", "{z}");
+    const url = source.url_template.replaceAll("{source_z}", "{z}");
     state.previewLayer = L.tileLayer(url, {
       minZoom: source.min_zoom,
       maxZoom: 24,
@@ -557,7 +562,7 @@
   }
 
   function requestPayload() {
-    if (!state.bounds) return null;
+    if (!state.bounds || !state.cornerInputsValid) return null;
     return {
       bounds: state.bounds,
       origin: {
@@ -565,6 +570,7 @@
         longitude: number("origin-lon"),
       },
       zoom: number("zoom"),
+      max_texture_dimension: number("max-texture-dimension"),
       source_id: $("source").value,
       name: $("name").value,
       output_dir: $("output-dir").value,
@@ -599,10 +605,23 @@
     return data;
   }
 
-  function schedulePlan(delay = 180) {
+  function updateBuildButton() {
+    $("build-button").disabled = state.building || !state.plan?.source.export_allowed;
+  }
+
+  function invalidatePlan() {
     clearTimeout(state.planTimer);
-    if (!state.bounds) return;
-    state.planTimer = setTimeout(refreshSummary, delay);
+    state.planSequence += 1;
+    state.plan = null;
+    $("summary").classList.remove("loading");
+    updateBuildButton();
+  }
+
+  function schedulePlan(delay = 180) {
+    invalidatePlan();
+    if (!state.cornerInputsValid) return;
+    const sequence = state.planSequence;
+    state.planTimer = setTimeout(() => refreshSummary(sequence), delay);
   }
 
   function sourceSetupIncomplete() {
@@ -612,31 +631,23 @@
     );
   }
 
-  async function refreshSummary() {
+  async function refreshSummary(sequence) {
     const payload = requestPayload();
-    if (!payload) return null;
+    if (!payload) return;
     if (sourceSetupIncomplete()) {
-      state.plan = null;
-      $("build-button").disabled = true;
       $("summary").innerHTML = emptySummary("Source details needed", "Complete the source fields above.");
-      return null;
+      return;
     }
 
-    const sequence = ++state.planSequence;
     $("summary").classList.add("loading");
     try {
       const plan = await api("/api/plan", { method: "POST", body: JSON.stringify(payload) });
-      if (sequence !== state.planSequence) return null;
+      if (sequence !== state.planSequence) return;
       state.plan = plan;
       $("summary").innerHTML = summaryHtml(plan);
-      $("build-button").disabled = !plan.source.export_allowed;
-      return plan;
+      updateBuildButton();
     } catch (error) {
-      if (sequence !== state.planSequence) return null;
-      state.plan = null;
-      $("build-button").disabled = true;
-      showError(error);
-      return null;
+      if (sequence === state.planSequence) showError(error);
     } finally {
       if (sequence === state.planSequence) $("summary").classList.remove("loading");
     }
@@ -644,40 +655,60 @@
 
   async function buildMap(event) {
     event.preventDefault();
-    if (!state.bounds) return;
+    const payload = requestPayload();
+    if (!payload || state.building || !state.plan?.source.export_allowed) return;
+
+    const body = JSON.stringify(payload);
+    const sequence = state.planSequence;
+    const requestIsCurrent = () => sequence === state.planSequence
+      && body === JSON.stringify(requestPayload());
     const button = $("build-button");
-    button.disabled = true;
+    const buildStatus = $("build-status");
+    state.building = true;
+    updateBuildButton();
     button.textContent = "Building map…";
+    buildStatus.textContent = "";
     try {
-      const plan = state.plan || await refreshSummary();
-      if (!plan) return;
-      const result = await api("/api/build", {
-        method: "POST",
-        body: JSON.stringify(requestPayload()),
-      });
-      state.plan = result.plan;
-      $("summary").innerHTML = summaryHtml(result.plan, result);
+      const result = await api("/api/build", { method: "POST", body });
+      if (requestIsCurrent()) {
+        state.plan = result.plan;
+        $("summary").innerHTML = summaryHtml(result.plan, result);
+      } else {
+        buildStatus.innerHTML = '<div class="success">Previous export built and verified.</div>'
+          + warningsHtml(result.plan.warnings) + buildPathsHtml(result);
+      }
     } catch (error) {
-      showError(error);
+      if (requestIsCurrent()) {
+        showError(error);
+      } else {
+        buildStatus.innerHTML = errorHtml(error, "Previous export failed.");
+      }
     } finally {
-      button.disabled = !state.plan || !state.plan.source.export_allowed;
+      state.building = false;
+      updateBuildButton();
       button.textContent = "Build Map";
     }
   }
 
-  function summaryHtml(plan, build = null) {
-    const warnings = plan.warnings.length
-      ? `<ul class="warnings">${plan.warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul>`
-      : "";
-    const success = build
-      ? '<div class="success">Map built and verified successfully.</div>'
-      : "";
-    const paths = build ? `<ul class="paths">
+  function buildPathsHtml(build) {
+    return `<ul class="paths">
       <li>TIFF: <code>${escapeHtml(build.tiff_path)}</code></li>
       <li>Info: <code>${escapeHtml(build.info_path)}</code></li>
       ${build.moos_path ? `<li>MOOS: <code>${escapeHtml(build.moos_path)}</code></li>` : ""}
       <li>${build.downloaded_tiles} downloaded, ${build.cache_hits} from cache</li>
-    </ul>` : "";
+    </ul>`;
+  }
+
+  function warningsHtml(warnings) {
+    return warnings.length
+      ? `<ul class="warnings">${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul>`
+      : "";
+  }
+
+  function summaryHtml(plan, build = null) {
+    const success = build
+      ? '<div class="success">Map built and verified successfully.</div>'
+      : "";
     const actualTiffBytes = build?.verification?.details?.file_size_bytes;
     const tiffSizeBytes = actualTiffBytes ?? plan.estimated_tiff_size_bytes;
     const tiffSizeLabel = actualTiffBytes ? "TIFF file size" : "Estimated TIFF size";
@@ -694,7 +725,7 @@
       ${metric("Display alignment", `${plan.estimated_max_requested_area_position_error_m.toFixed(1)} m model max`, "A theoretical worst-case comparison between the TIFF's affine placement and MOOS UTM coordinates inside the selection. It is not a measured image-registration error, and it does not change mission navigation or local XY coordinates.")}
     </div>
     <p class="summary-bounds">W ${plan.actual_bounds.west.toFixed(8)} · S ${plan.actual_bounds.south.toFixed(8)} · E ${plan.actual_bounds.east.toFixed(8)} · N ${plan.actual_bounds.north.toFixed(8)}</p>
-    ${warnings}${paths}`;
+    ${warningsHtml(plan.warnings)}${build ? buildPathsHtml(build) : ""}`;
   }
 
   function metric(label, value, tip) {
@@ -713,8 +744,12 @@
     return `<div class="empty-state"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(description)}</span></div>`;
   }
 
+  function errorHtml(error, title) {
+    return `<div class="error"><strong>${escapeHtml(title)}</strong><br>${escapeHtml(error.message)}</div>`;
+  }
+
   function showError(error) {
-    $("summary").innerHTML = `<div class="error"><strong>Could not continue.</strong><br>${escapeHtml(error.message)}</div>`;
+    $("summary").innerHTML = errorHtml(error, "Could not continue.");
   }
 
   function formatMeters(value) {
@@ -797,11 +832,15 @@
     schedulePlan();
   });
   $("url-template").addEventListener("change", () => {
-    if ($("url-template").value.trim()) {
+    const template = $("url-template").value.trim();
+    const validPreview = template && !/[{}]/.test(template.replace(/\{(?:z|source_z|x|y)\}/g, ""));
+    if (validPreview) {
       setPreview({
-        url_template: $("url-template").value.trim(), min_zoom: 0,
+        url_template: template, min_zoom: 0,
         max_zoom: number("zoom"), attribution: "Custom source",
       });
+    } else {
+      setPreview(null);
     }
     schedulePlan(0);
   });
@@ -811,6 +850,13 @@
 
   for (const id of ["corner-north", "corner-west", "corner-south", "corner-east"]) {
     $(id).addEventListener("input", applyCornerInputs);
+    $(id).addEventListener("blur", applyCornerInputs);
+    $(id).addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        applyCornerInputs(event);
+      }
+    });
   }
   $("auto-origin").addEventListener("change", () => {
     const automatic = $("auto-origin").checked;
@@ -820,6 +866,7 @@
   });
   $("origin-lat").addEventListener("change", () => { drawOrigin(); schedulePlan(0); });
   $("origin-lon").addEventListener("change", () => { drawOrigin(); schedulePlan(0); });
+  $("max-texture-dimension").addEventListener("input", () => schedulePlan());
 
   loadSources().catch(showError);
 })();

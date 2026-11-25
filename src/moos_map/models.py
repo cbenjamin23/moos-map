@@ -8,6 +8,7 @@ from .errors import ValidationError
 
 
 WEB_MERCATOR_MAX_LAT = 85.0511287798066
+DEFAULT_MAX_TEXTURE_DIMENSION = 16_384
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,9 +39,18 @@ class Bounds:
         if self.south >= self.north:
             raise ValidationError("South must be less than north")
 
+    def longitude_near_center(self, longitude: float) -> float:
+        center = (self.west + self.east) / 2.0
+        if center - longitude > 180:
+            return longitude + 360
+        if longitude - center > 180:
+            return longitude - 360
+        return longitude
+
     def contains(self, latitude: float, longitude: float) -> bool:
         return (
-            self.south <= latitude <= self.north and self.west <= longitude <= self.east
+            self.south <= latitude <= self.north
+            and self.west <= self.longitude_near_center(longitude) <= self.east
         )
 
     def as_dict(self) -> dict[str, float]:
@@ -147,6 +157,7 @@ class MapRequest:
     mbtiles_path: Path | None = None
     max_tiles: int = 1024
     max_pixels: int = 67_108_864
+    max_texture_dimension: int = DEFAULT_MAX_TEXTURE_DIMENSION
 
     @property
     def overwrite_outputs(self) -> bool:

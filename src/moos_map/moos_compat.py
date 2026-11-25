@@ -41,14 +41,14 @@ def moos_utm(
 
     long_temp = (longitude + 180.0) % 360.0 - 180.0
     latitude_radians = math.radians(latitude)
-    longitude_radians = math.radians(long_temp)
     projection_zone = (
         utm_zone_number(long_temp, latitude) if zone is None else zone
     )
     if not 1 <= projection_zone <= 60:
         raise ValueError("UTM zone must be between 1 and 60")
     central_longitude = (projection_zone - 1) * 6 - 180 + 3
-    central_longitude_radians = math.radians(central_longitude)
+    # Wrap the difference from the zone meridian to stay continuous at ±180°.
+    longitude_offset = (longitude - central_longitude + 180.0) % 360.0 - 180.0
 
     eccentricity_squared = MOOS_WGS84_ECCENTRICITY_SQUARED
     eccentricity_prime_squared = eccentricity_squared / (1 - eccentricity_squared)
@@ -60,7 +60,7 @@ def moos_utm(
     )
     t = tangent * tangent
     c = eccentricity_prime_squared * cos_latitude * cos_latitude
-    a = cos_latitude * (longitude_radians - central_longitude_radians)
+    a = cos_latitude * math.radians(longitude_offset)
 
     meridional_arc = WGS84_SEMI_MAJOR_AXIS_M * (
         (
@@ -119,6 +119,7 @@ def estimate_pmarineviewer_placement(
     *,
     requested_bounds: Bounds | None = None,
     samples_per_axis: int = 12,
+    viewer_longitude: float | None = None,
 ) -> PMarineViewerEstimate:
     """Predict the default UTM BackImg rectangle and its worst sampled error."""
 
@@ -147,7 +148,9 @@ def estimate_pmarineviewer_placement(
     width = abs(northwest_easting - southeast_easting)
     height = abs(northwest_northing - southeast_northing)
 
-    origin_x_fraction = (origin.longitude - bounds.west) / (bounds.east - bounds.west)
+    if viewer_longitude is None:
+        viewer_longitude = bounds.longitude_near_center(origin.longitude)
+    origin_x_fraction = (viewer_longitude - bounds.west) / (bounds.east - bounds.west)
     origin_y_fraction = (origin.latitude - bounds.south) / (bounds.north - bounds.south)
     center_x = (0.5 - origin_x_fraction) * width
     center_y = (0.5 - origin_y_fraction) * height

@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
 import tempfile
+from dataclasses import replace
 from pathlib import Path
+from uuid import uuid4
+
+from filelock import FileLock
 
 from . import __version__
 from .acquisition import (
@@ -24,10 +29,16 @@ from .geometry import (
 )
 from .models import BuildResult, MapPlan, MapRequest
 from .moos_compat import estimate_pmarineviewer_placement
-from .moos_files import write_info_file, write_moos_snippet
+from .moos_files import (
+    moos_snippet_text,
+    parse_info_file,
+    tiff_binding,
+    write_info_file,
+    write_moos_snippet,
+)
 from .raster import crop_to_pixel_window, save_tiff_atomic, stitch_tiles
-from .sources import MapSource, resolve_source
-from .verification import verify_bundle
+from .sources import MapSource, mbtiles_coverage, resolve_source
+from .verification import VerificationReport, install_journal_path, verify_bundle
 
 
 NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -89,6 +100,28 @@ def resolve_request_source(request: MapRequest) -> MapSource:
     )
 
 
+def _highest_zoom_for_texture_target(request: MapRequest, source: MapSource) -> int | None:
+    for zoom in range(request.zoom - 1, source.min_zoom - 1, -1):
+        if source.available_zooms is not None and zoom not in source.available_zooms:
+            continue
+        tiles = tile_range_for_bounds(request.bounds, zoom)
+        if tiles.count > request.max_tiles:
+            continue
+        try:
+            crop = pixel_window_for_bounds(request.bounds, tiles, source.tile_size)
+        except ValidationError:
+            continue
+        if (
+            max(crop.output_width, crop.output_height) > request.max_texture_dimension
+            or crop.output_width * crop.output_height > request.max_pixels
+        ):
+            continue
+        if source.mbtiles_path and mbtiles_coverage(source.mbtiles_path, tiles) != tiles.count:
+            continue
+        return zoom
+    return None
+
+
 def plan_map(
     request: MapRequest,
     source: MapSource | None = None,
@@ -96,6 +129,8 @@ def plan_map(
     source = source or resolve_request_source(request)
     if request.max_tiles < 1:
         raise ValidationError("Maximum tile count must be at least one")
+    if request.max_texture_dimension < 1:
+        raise ValidationError("Target texture dimension must be at least one pixel")
     if request.max_pixels < source.tile_size * source.tile_size:
         raise ValidationError(
             f"Maximum pixel count must allow at least one {source.tile_size}x"
@@ -103,6 +138,9 @@ def plan_map(
         )
     if request.bounds.south < -80 or request.bounds.north > 84:
         raise ValidationError("MOOS UTM map placement is limited to 80°S through 84°N")
+    if source.available_zooms is not None and request.zoom not in source.available_zooms:
+        levels = ", ".join(str(zoom) for zoom in source.available_zooms)
+        raise ValidationError(f"MBTiles archive has no tiles at zoom {request.zoom}. Available zoom levels: {levels}")
     if not source.min_zoom <= request.zoom <= source.max_zoom:
         raise ValidationError(
             f"Source '{source.id}' supports zoom {source.min_zoom} through "
@@ -117,6 +155,17 @@ def plan_map(
     pixel_width = crop.output_width
     pixel_height = crop.output_height
     center_latitude = (actual_bounds.north + actual_bounds.south) / 2.0
+    if (
+        source.mbtiles_path is not None
+        and tiles.count <= request.max_tiles
+        and pixel_width * pixel_height <= request.max_pixels
+    ):
+        covered = mbtiles_coverage(source.mbtiles_path, tiles)
+        if covered != tiles.count:
+            raise ValidationError(
+                f"MBTiles archive covers {covered} of {tiles.count} requested tiles at zoom "
+                f"{tiles.zoom}. Choose a region with complete tile coverage."
+            )
 
     warnings: list[str] = []
     if not source.export_allowed:
@@ -138,6 +187,16 @@ def plan_map(
             f"Plan creates {pixel_width * pixel_height:,} pixels, above the configured "
             f"limit of {request.max_pixels:,}"
         )
+    if max(pixel_width, pixel_height) > request.max_texture_dimension:
+        zoom = _highest_zoom_for_texture_target(request, source)
+        suggestion = (
+            f"Zoom {zoom} is the highest available zoom that fits the target and build limits."
+            if zoom is not None else "Choose a smaller region or a source with a suitable zoom."
+        )
+        warnings.append(
+            f"The {pixel_width:,} × {pixel_height:,} px TIFF exceeds the pMarineViewer "
+            f"texture target of {request.max_texture_dimension:,} px per side. {suggestion}"
+        )
     width_ratio = 1.0
     height_ratio = 1.0
     mapping_error = estimate_vertical_mapping_error_for_bounds(actual_bounds)
@@ -147,9 +206,12 @@ def plan_map(
         request.origin,
         requested_bounds=request.bounds,
     )
+    source_report = source.as_dict()
+    if source.id == "custom":
+        source_report["url_template"] = None
 
     return MapPlan(
-        source=source.as_dict(),
+        source=source_report,
         requested_bounds=request.bounds,
         actual_bounds=actual_bounds,
         download_bounds=download_bounds,
@@ -177,6 +239,121 @@ def plan_map(
     )
 
 
+def _check_existing_outputs(targets: list[Path]) -> None:
+    existing = [path for path in targets if path.exists() or path.is_symlink()]
+    if existing:
+        raise ValidationError(
+            "Output protection is enabled and these files already exist: "
+            + ", ".join(str(path) for path in existing)
+        )
+
+
+def _is_previous_generated_snippet(
+    moos_path: Path, tiff_path: Path, info_path: Path
+) -> bool:
+    try:
+        if moos_path.is_symlink() or not moos_path.is_file():
+            return False
+        origin = parse_info_file(info_path).origin
+        expected = moos_snippet_text(tiff_name=tiff_path.name, origin=origin).encode(
+            "utf-8"
+        )
+        return (
+            moos_path.stat().st_size == len(expected)
+            and moos_path.read_bytes() == expected
+        )
+    except (OSError, ValidationError):
+        return False
+
+
+def _check_snippet_can_be_replaced(moos_path: Path, tiff_path: Path, info_path: Path) -> None:
+    if (moos_path.exists() or moos_path.is_symlink()) and not _is_previous_generated_snippet(
+        moos_path, tiff_path, info_path
+    ):
+        raise ValidationError(
+            f"Existing mission file was preserved at {moos_path}. "
+            "Choose a different map name or omit mission snippet generation."
+        )
+
+
+def _restore_outputs(journal: Path, originals: dict[Path, bool]) -> None:
+    for target, existed in reversed(list(originals.items())):
+        if existed:
+            # Keep the backup intact so recovery can resume after another interruption.
+            backup = journal / "backups" / target.name
+            temporary = journal / "restoring"
+            temporary.unlink(missing_ok=True)
+            shutil.copy2(backup, temporary, follow_symlinks=False)
+            os.replace(temporary, target)
+        else:
+            target.unlink(missing_ok=True)
+
+
+def _recover_interrupted_install(tiff_path: Path) -> None:
+    journal = install_journal_path(tiff_path)
+    if not journal.exists():
+        return
+    required = {tiff_path.name, tiff_path.with_suffix(".info").name}
+    allowed = required | {tiff_path.with_suffix(".moos").name}
+    try:
+        manifest = json.loads((journal / "originals.json").read_text(encoding="utf-8"))
+        if not isinstance(manifest, dict) or not required <= manifest.keys() <= allowed:
+            raise ValueError("unexpected output names")
+        for name, existed in manifest.items():
+            if not isinstance(existed, bool):
+                raise ValueError("invalid backup record")
+            backup = journal / "backups" / name
+            if existed and not (backup.is_file() or backup.is_symlink()):
+                raise ValueError(f"missing backup for {name}")
+        _restore_outputs(journal, {journal.parent / name: v for name, v in manifest.items()})
+        # Remove the install marker atomically before cleaning out its backups.
+        with tempfile.TemporaryDirectory(prefix=".moos-map-recovery-", dir=journal.parent) as directory:
+            os.replace(journal, Path(directory) / "recovered")
+    except (OSError, ValueError) as exc:
+        raise ValidationError(f"Cannot recover interrupted map installation at {journal}: {exc}") from exc
+
+
+def _install_bundle(
+    staging_dir: Path,
+    staged_targets: list[tuple[Path | None, Path]],
+    tiff_path: Path,
+) -> VerificationReport:
+    journal = install_journal_path(tiff_path)
+    backups = staging_dir / "backups"
+    backups.mkdir()
+    originals: dict[Path, bool] = {}
+    for _, target in staged_targets:
+        originals[target] = target.exists() or target.is_symlink()
+        if originals[target]:
+            shutil.copy2(target, backups / target.name, follow_symlinks=False)
+    (staging_dir / "originals.json").write_text(
+        json.dumps({path.name: existed for path, existed in originals.items()}), encoding="utf-8"
+    )
+    # Publish the recovery journal before replacing any live files.
+    os.replace(staging_dir, journal)
+
+    changed: list[Path] = []
+    try:
+        for staged, target in staged_targets:
+            if staged is None:
+                target.unlink()
+            else:
+                os.replace(journal / staged.name, target)
+            changed.append(target)
+        report = verify_bundle(tiff_path, check_interrupted=False)
+        if not report.ok:
+            raise ValidationError(
+                "Installed bundle failed verification: " + "; ".join(report.errors)
+            )
+        os.replace(journal, staging_dir)
+    except BaseException:
+        if journal.exists():
+            _restore_outputs(journal, {target: originals[target] for target in changed})
+            os.replace(journal, staging_dir)
+        raise
+    return report
+
+
 def build_map(
     request: MapRequest,
     *,
@@ -202,14 +379,15 @@ def build_map(
     output_dir = prepare_bundle_directory(request.output_dir, name)
     tiff_path = output_dir / f"{name}.tif"
     info_path = output_dir / f"{name}.info"
-    moos_path = output_dir / f"{name}.moos" if request.emit_moos else None
-    targets = [tiff_path, info_path] + ([moos_path] if moos_path else [])
-    existing = [path for path in targets if path and path.exists()]
-    if existing and not request.overwrite_outputs:
-        raise ValidationError(
-            "Output protection is enabled and these files already exist: "
-            + ", ".join(str(path) for path in existing)
-        )
+    moos_path = output_dir / f"{name}.moos"
+    targets = [tiff_path, info_path] + ([moos_path] if request.emit_moos else [])
+    lock = FileLock(str(output_dir / ".moos-map.lock"))
+    with lock:
+        _recover_interrupted_install(tiff_path)
+        if not request.overwrite_outputs:
+            _check_existing_outputs(targets)
+        if request.emit_moos:
+            _check_snippet_can_be_replaced(moos_path, tiff_path, info_path)
 
     owns_provider = provider is None
     active_provider = provider or create_provider(source)
@@ -226,13 +404,18 @@ def build_map(
             staging_dir = Path(temporary_name)
             staged_tiff = staging_dir / tiff_path.name
             staged_info = staging_dir / info_path.name
-            staged_moos = staging_dir / moos_path.name if moos_path else None
+            staged_moos = staging_dir / moos_path.name if request.emit_moos else None
+            export_id = uuid4().hex
+            description = tiff_binding(
+                export_id, plan.actual_bounds, request.origin,
+                viewer_longitude=plan.actual_bounds.longitude_near_center(request.origin.longitude),
+            )
 
             stitched_image = stitch_tiles(tile_data, plan.tiles, source.tile_size)
             try:
                 image = crop_to_pixel_window(stitched_image, plan.crop)
                 try:
-                    save_tiff_atomic(image, staged_tiff)
+                    save_tiff_atomic(image, staged_tiff, description=description)
                 finally:
                     image.close()
             finally:
@@ -247,6 +430,7 @@ def build_map(
                 zoom=request.zoom,
                 requested_bounds=request.bounds,
                 generator_version=__version__,
+                export_id=export_id,
             )
             if staged_moos:
                 write_moos_snippet(
@@ -262,42 +446,33 @@ def build_map(
                     + "; ".join(staged_report.errors)
                 )
 
-            staged_targets = [(staged_info, info_path), (staged_tiff, tiff_path)]
-            if staged_moos and moos_path:
-                staged_targets.append((staged_moos, moos_path))
-
-            backups: dict[Path, Path] = {}
-            for _, target in staged_targets:
-                if target.exists():
-                    backup = staging_dir / f"backup-{target.name}"
-                    shutil.copy2(target, backup)
-                    backups[target] = backup
-
-            replaced: list[Path] = []
-            try:
-                for staged, target in staged_targets:
-                    os.replace(staged, target)
-                    replaced.append(target)
-                report = verify_bundle(tiff_path)
-                if not report.ok:
-                    raise ValidationError(
-                        "Installed bundle failed verification: "
-                        + "; ".join(report.errors)
-                    )
-            except Exception:
-                for target in reversed(replaced):
-                    backup = backups.get(target)
-                    if backup and backup.exists():
-                        os.replace(backup, target)
+            with lock:
+                _recover_interrupted_install(tiff_path)
+                if not request.overwrite_outputs:
+                    _check_existing_outputs(targets)
+                staged_targets: list[tuple[Path | None, Path]] = [
+                    (staged_info, info_path),
+                    (staged_tiff, tiff_path),
+                ]
+                if staged_moos:
+                    _check_snippet_can_be_replaced(moos_path, tiff_path, info_path)
+                    staged_targets.append((staged_moos, moos_path))
+                elif moos_path.exists() or moos_path.is_symlink():
+                    if _is_previous_generated_snippet(moos_path, tiff_path, info_path):
+                        staged_targets.append((None, moos_path))
                     else:
-                        target.unlink(missing_ok=True)
-                raise
+                        warning = (
+                            f"Existing mission snippet was preserved at {moos_path}. "
+                            "Check its origin and TIFF name before using it."
+                        )
+                        plan = replace(plan, warnings=(*plan.warnings, warning))
+                report = _install_bundle(staging_dir, staged_targets, tiff_path)
 
         return BuildResult(
             plan=plan,
             tiff_path=tiff_path,
             info_path=info_path,
-            moos_path=moos_path,
+            moos_path=moos_path if request.emit_moos else None,
             cache_hits=active_provider.cache_hits,
             downloaded_tiles=active_provider.downloaded_tiles,
             verification=report.as_dict(),

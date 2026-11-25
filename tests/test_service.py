@@ -1,16 +1,22 @@
 from __future__ import annotations
 
+import os
+from dataclasses import replace
+from multiprocessing import get_context
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from PIL import Image
 
 from conftest import make_tile
+from moos_map import service
 from moos_map.errors import SourcePolicyError, ValidationError
 from moos_map.models import Bounds, MapRequest, Origin, TileRange
 from moos_map.geometry import bounds_for_tile_range
 from moos_map.moos_files import parse_info_file
 from moos_map.service import build_map, plan_map
+from moos_map.verification import verify_bundle
 
 
 class FakeProvider:
@@ -100,11 +106,235 @@ def test_existing_output_is_replaced_by_default(tmp_path: Path) -> None:
     assert replacement.downloaded_tiles == 4
 
 
+def test_verification_rejects_mixed_exports_even_with_the_same_bounds(tmp_path: Path) -> None:
+    first = build_map(local_request(tmp_path, name="first"), provider=FakeProvider())
+    second = build_map(local_request(tmp_path, name="second"), provider=FakeProvider())
+    assert first.verification["ok"] and second.verification["ok"]
+
+    original = first.info_path.read_bytes()
+    first.info_path.write_bytes(second.info_path.read_bytes())
+    assert not verify_bundle(first.tiff_path).ok
+
+    first.info_path.write_bytes(original + b"// Copied to the mission folder\n")
+    assert verify_bundle(first.tiff_path).ok
+
+    first.info_path.write_bytes(original.replace(b"-71.0870000000", b"-71.0880000000"))
+    assert not verify_bundle(first.tiff_path).ok
+
+
 def test_existing_output_can_be_protected(tmp_path: Path) -> None:
     build_map(local_request(tmp_path), provider=FakeProvider())
 
     with pytest.raises(ValidationError, match="Output protection is enabled"):
         build_map(local_request(tmp_path, overwrite=False), provider=FakeProvider())
+
+
+def _run_concurrent_build(request: MapRequest, before_fetch, results) -> None:
+    fetch_tile_range = service.fetch_tile_range
+
+    def fetch_after_both_preflight_checks(*args, **kwargs):
+        before_fetch.wait(timeout=10)
+        return fetch_tile_range(*args, **kwargs)
+
+    with patch.object(service, "fetch_tile_range", fetch_after_both_preflight_checks):
+        try:
+            result = build_map(request, provider=FakeProvider())
+        except ValidationError as exc:
+            results.put(("error", str(exc)))
+        else:
+            details = result.verification["details"]
+            results.put(("built", (details["origin"], details["pixel_width"], result.plan.pixel_width)))
+
+
+@pytest.mark.parametrize("overwrite", [False, True])
+def test_concurrent_builds_install_consistent_bundles(tmp_path: Path, overwrite: bool) -> None:
+    context = get_context("spawn")
+    before_fetch = context.Barrier(2)
+    results = context.Queue()
+    requests = [
+        local_request(tmp_path, overwrite=overwrite),
+        local_request(
+            tmp_path,
+            overwrite=overwrite,
+            bounds=Bounds(west=-71.088, south=42.358, east=-71.087, north=42.359),
+            origin=Origin(42.3585, -71.0875),
+        ),
+    ]
+    workers = [
+        context.Process(
+            target=_run_concurrent_build,
+            args=(request, before_fetch, results),
+        )
+        for request in requests
+    ]
+
+    try:
+        for worker in workers:
+            worker.start()
+        for worker in workers:
+            worker.join(timeout=15)
+            assert worker.exitcode == 0
+        outcomes = [results.get(timeout=2) for _ in workers]
+    finally:
+        for worker in workers:
+            if worker.is_alive():
+                worker.terminate()
+                worker.join()
+        results.close()
+
+    successes = [value for kind, value in outcomes if kind == "built"]
+    errors = [value for kind, value in outcomes if kind == "error"]
+    if overwrite:
+        assert len(successes) == 2 and not errors
+    else:
+        assert len(successes) == len(errors) == 1
+        assert "Output protection is enabled" in errors[0]
+
+    plans = {request.origin.longitude: plan_map(request) for request in requests}
+    for origin, installed_width, planned_width in successes:
+        assert installed_width == planned_width == plans[origin["longitude"]].pixel_width
+    tiff_path = tmp_path / "harbor" / "harbor.tif"
+    report = verify_bundle(tiff_path)
+    assert report.ok
+    longitude = report.details["origin"]["longitude"]
+    assert longitude in {origin["longitude"] for origin, _, _ in successes}
+    assert report.details["pixel_width"] == plans[longitude].pixel_width
+    snippet = tiff_path.with_suffix(".moos").read_text(encoding="utf-8")
+    assert f"LongOrigin = {longitude:.10f}" in snippet
+
+
+def test_rebuild_can_remove_previous_generated_snippet(tmp_path: Path) -> None:
+    original = build_map(local_request(tmp_path), provider=FakeProvider())
+    snippet = original.tiff_path.with_suffix(".moos")
+    assert snippet.is_file()
+    origin = Origin(latitude=42.36, longitude=-71.088)
+
+    result = build_map(local_request(tmp_path, origin=origin, emit_moos=False), provider=FakeProvider())
+
+    assert result.moos_path is None
+    assert not snippet.exists()
+    assert parse_info_file(result.info_path).origin == origin
+
+
+def test_rebuild_preserves_edited_snippet_when_omitting_snippet(tmp_path: Path) -> None:
+    original = build_map(local_request(tmp_path), provider=FakeProvider())
+    snippet = original.tiff_path.with_suffix(".moos")
+    edited = snippet.read_bytes() + b"\n// Mission-specific changes\n"
+    snippet.write_bytes(edited)
+
+    result = build_map(
+        local_request(tmp_path, origin=Origin(42.36, -71.088), emit_moos=False),
+        provider=FakeProvider(),
+    )
+
+    assert snippet.read_bytes() == edited
+    assert any("Existing mission snippet was preserved" in warning for warning in result.plan.warnings)
+
+
+@pytest.mark.parametrize("edit_during_fetch", [False, True])
+def test_rebuild_refuses_to_overwrite_an_edited_snippet(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, edit_during_fetch: bool
+) -> None:
+    request = local_request(tmp_path)
+    original = build_map(request, provider=FakeProvider())
+    snippet = original.tiff_path.with_suffix(".moos")
+    edited = snippet.read_bytes() + b"\n// Mission-specific settings\n"
+    before = (original.tiff_path.read_bytes(), original.info_path.read_bytes())
+    provider = FakeProvider()
+
+    if edit_during_fetch:
+        fetch = service.fetch_tile_range
+
+        def edit_then_fetch(*args, **kwargs):
+            snippet.write_bytes(edited)
+            return fetch(*args, **kwargs)
+
+        monkeypatch.setattr(service, "fetch_tile_range", edit_then_fetch)
+    else:
+        snippet.write_bytes(edited)
+
+    with pytest.raises(ValidationError, match="Existing mission file was preserved"):
+        build_map(request, provider=provider)
+
+    assert snippet.read_bytes() == edited
+    assert (original.tiff_path.read_bytes(), original.info_path.read_bytes()) == before
+    assert bool(provider.downloaded_tiles) == edit_during_fetch
+    assert verify_bundle(original.tiff_path).ok
+
+
+def test_failed_install_restores_prior_snippet(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    original = build_map(local_request(tmp_path), provider=FakeProvider())
+    snippet = original.tiff_path.with_suffix(".moos")
+    before = {path: path.read_bytes() for path in (original.tiff_path, original.info_path, snippet)}
+
+    def fail_installed_verification(path: Path, **options):
+        report = verify_bundle(path, **options)
+        if path == original.tiff_path:
+            assert not snippet.exists()
+            return replace(report, ok=False, errors=("simulated installation failure",))
+        return report
+
+    monkeypatch.setattr(service, "verify_bundle", fail_installed_verification)
+    replacement = local_request(
+        tmp_path,
+        bounds=Bounds(west=-71.088, south=42.358, east=-71.087, north=42.359),
+        origin=Origin(42.3585, -71.0875),
+        emit_moos=False,
+    )
+    with pytest.raises(ValidationError, match="simulated installation failure"):
+        build_map(replacement, provider=FakeProvider())
+
+    assert {path: path.read_bytes() for path in before} == before
+
+
+def _stop_after_installing_info(request: MapRequest) -> None:
+    replace_file = os.replace
+    final_info = request.output_dir / "harbor" / "harbor.info"
+
+    def interrupted_replace(source, destination):
+        replace_file(source, destination)
+        if destination == final_info:
+            os._exit(73)
+
+    with patch.object(service.os, "replace", interrupted_replace):
+        build_map(request, provider=FakeProvider())
+
+
+def test_interrupted_rebuild_is_detected_and_recovered(tmp_path: Path) -> None:
+    previous = build_map(local_request(tmp_path), provider=FakeProvider())
+    before = {
+        path: path.read_bytes()
+        for path in (previous.tiff_path, previous.info_path, previous.tiff_path.with_suffix(".moos"))
+    }
+    attempted = local_request(
+        tmp_path,
+        bounds=Bounds(west=-71.088, south=42.358, east=-71.087, north=42.359),
+        origin=Origin(42.3585, -71.0875),
+    )
+    process = get_context("spawn").Process(target=_stop_after_installing_info, args=(attempted,))
+    process.start()
+    try:
+        process.join(timeout=10)
+        assert process.exitcode == 73
+    finally:
+        if process.is_alive():
+            process.terminate()
+            process.join()
+
+    assert previous.info_path.read_bytes() != before[previous.info_path]
+    report = verify_bundle(previous.tiff_path)
+    assert not report.ok and any("incomplete" in message for message in report.errors)
+
+    with pytest.raises(ValidationError, match="Output protection is enabled"):
+        build_map(replace(attempted, overwrite=False), provider=FakeProvider())
+    assert verify_bundle(previous.tiff_path).ok
+    assert {path: path.read_bytes() for path in before} == before
+
+    replacement = build_map(attempted, provider=FakeProvider())
+    assert replacement.verification["ok"]
+    assert parse_info_file(replacement.info_path).origin == attempted.origin
 
 
 def test_failed_force_build_preserves_existing_bundle(
@@ -201,6 +431,32 @@ def test_outside_origin_is_allowed_with_warning(tmp_path: Path) -> None:
     plan = plan_map(request)
 
     assert any("origin lies outside" in warning for warning in plan.warnings)
+
+
+@pytest.mark.parametrize(
+    "bounds",
+    [
+        Bounds(west=-71.1, south=42, east=-71.1 + 20_000 * 360 / (256 * (1 << 19)), north=42.0003),
+        Bounds(west=0, south=0, east=0.0003, north=0.054),
+    ],
+)
+def test_texture_warning_checks_each_side_and_suggests_a_lower_zoom(
+    tmp_path: Path, bounds: Bounds
+) -> None:
+    origin = Origin((bounds.south + bounds.north) / 2, (bounds.west + bounds.east) / 2)
+    request = local_request(tmp_path, bounds=bounds, origin=origin, zoom=19)
+
+    plan = plan_map(request)
+    warning = next(warning for warning in plan.warnings if "texture target" in warning)
+    assert max(plan.pixel_width, plan.pixel_height) > 16_384
+    assert "Zoom 18 is the highest available zoom" in warning
+
+    exact_target = max(plan.pixel_width, plan.pixel_height)
+    permitted = plan_map(replace(request, max_texture_dimension=exact_target))
+    assert not any("texture target" in warning for warning in permitted.warnings)
+
+    smaller = plan_map(replace(request, max_texture_dimension=8192))
+    assert any("Zoom 17 is the highest available zoom" in warning for warning in smaller.warnings)
 
 
 def test_cross_zone_map_is_planned_with_fixed_zone_geodesy(tmp_path: Path) -> None:

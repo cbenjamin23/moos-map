@@ -48,7 +48,7 @@ def crop_to_pixel_window(image: Image.Image, crop: PixelWindow) -> Image.Image:
     )
 
 
-def save_tiff_atomic(image: Image.Image, destination: Path) -> None:
+def save_tiff_atomic(image: Image.Image, destination: Path, *, description: str) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     handle, temporary_name = tempfile.mkstemp(
         prefix=f".{destination.stem}.", suffix=".tif", dir=destination.parent
@@ -61,6 +61,7 @@ def save_tiff_atomic(image: Image.Image, destination: Path) -> None:
             format="TIFF",
             compression="tiff_lzw",
             dpi=(96, 96),
+            tiffinfo={270: description},
         )
         os.replace(temporary_path, destination)
     finally:

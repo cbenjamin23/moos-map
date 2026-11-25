@@ -49,6 +49,28 @@ def test_info_parser_rejects_unknown_active_key(tmp_path: Path) -> None:
         parse_info_file(path)
 
 
+@pytest.mark.parametrize(
+    ("west", "east", "mission_longitude", "viewer_longitude"),
+    [(179.99, 179.999, -179.999, 180.001), (-179.999, -179.99, 179.999, -180.001),
+     (179.99, 180, -180, 180)],
+)
+def test_info_preserves_mission_origin_and_stores_adjacent_viewer_longitude(
+    tmp_path: Path, west: float, east: float, mission_longitude: float, viewer_longitude: float
+) -> None:
+    path = tmp_path / "dateline.info"
+    bounds = Bounds(west=west, south=0, east=east, north=0.001)
+    origin = Origin(latitude=0.0005, longitude=mission_longitude)
+    write_info_file(
+        path, actual_bounds=bounds, origin=origin, source_id="test", source_attribution="Test",
+        zoom=16, requested_bounds=bounds, generator_version="test",
+    )
+
+    assert f"datum_lon = {viewer_longitude:.10f}" in path.read_text()
+    parsed = parse_info_file(path)
+    assert parsed.origin == origin
+    assert parsed.viewer_longitude == pytest.approx(viewer_longitude)
+
+
 def test_info_parser_rejects_duplicate_key(tmp_path: Path) -> None:
     path = tmp_path / "duplicate.info"
     path.write_text(

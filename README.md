@@ -50,6 +50,12 @@ Esri World Imagery and zoom 17 are the defaults. The origin defaults to the
 map center. For an existing mission, open **04 Advanced placement** and enter
 its `LatOrigin` and `LongOrigin`, or drag the red origin dot.
 
+The browser app can start offline. Use **Local MBTiles archive** and enter the
+corners under **Advanced placement** to build from local imagery. Press Enter
+or leave a coordinate field to apply its edits. Select an
+export zoom present in the archive. Hosted imagery and place-name search
+require their respective services.
+
 ## CLI
 
 Build with the same defaults by supplying any two diagonal corners as
@@ -84,6 +90,15 @@ Use `--zoom`, `--source`, or `--output-dir` to override defaults. Builds include
 a `.moos` snippet and replace same-named bundles safely by default. See
 `moos-map build -h` for opt-out and cache controls.
 
+Planning warns when a TIFF side exceeds the pMarineViewer texture target and
+suggests a lower zoom when one fits. Set the target per side with
+`--max-texture-dimension` or in the browser's advanced placement settings.
+The default is 16,384 pixels. The target only affects the warning.
+
+Split a selection that crosses the date line into two exports, one bounded by
+`180` and the other by `-180`. Use `--allow-wide-bounds` when you intend to cover
+more than 180 degrees between the numerically ordered longitudes.
+
 ## Output
 
 Each map gets its own directory:
@@ -99,9 +114,29 @@ Copy the `.tif` and `.info` files into a mission directory, or add that exact
 map directory to `IVP_IMAGE_DIRS`. Then add the generated `harbor.moos` settings
 to the mission. pMarineViewer does not recursively search `~/moos-maps`.
 
+When a rebuild omits the mission snippet, MOOS Map removes an existing snippet
+that exactly matches the one generated for the previous map. It preserves edited
+or unrecognized snippets and asks you to check their mission settings.
+For a same-name rebuild that generates a snippet, existing edited or unrecognized
+mission files stop the rebuild. Choose a different name or omit the snippet.
+If a process stops during final installation, `verify` reports an incomplete
+bundle. Rebuild the same map to restore the previous files before installing
+the new export.
+
 The TIFF is cropped to the selected coordinates; extra downloaded tile margins
 are discarded. Source and requested-bound provenance is kept as ignored `//`
 comments in the `.info`; no JSON sidecar is created.
+
+New exports carry a matching identifier in the TIFF and `.info`. `verify`
+checks that the files are from the same export and that the placement metadata
+matches. Existing TIFFs and `.info` files can still be verified. Regenerate a
+bound pair when changing its bounds or mission origin.
+`verify` also warns if a same-name generated `.moos` snippet disagrees with the
+map's origin or TIFF name.
+
+Near the date line, `.info` may use an equivalent longitude adjacent to the
+image for pMarineViewer placement. Use the generated `.moos` snippet for the
+mission's canonical `LongOrigin`.
 
 ## Sources
 
@@ -198,9 +233,9 @@ those foundations with:
   response-size, coordinate, and zoom limits before expensive or unsafe work
   begins.
 
-- **Transaction-Safe Output:** Builds and verifies files in staging, replaces
-  existing bundles atomically, and restores prior files if installation or
-  verification fails.
+- **Transaction-Safe Output:** Builds and verifies files in staging, serializes
+  installations targeting the same bundle, and restores prior files if
+  installation or verification fails.
 
 - **Automation Interfaces:** Provides `sources`, `plan`, `build`, and `verify`
   commands with machine-readable JSON output for repeatable scripts and agent
